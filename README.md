@@ -30,7 +30,7 @@ One package per concern, all versioned together:
 | `database/migration` | goose migrations with an environment guard |
 | `facades/*` | Package-level access with an adapter behind it: authentication, authorization, database factories and seeders |
 | `otel` | Tracing, logging, masking, HTTP capture, middleware and transports |
-| `packages/*` | Standalone libraries that happen to live here for now: `socialite`, `validation`. HTTP clients use [gonstruct/hyper](https://github.com/gonstruct/hyper) |
+| `packages/*` | Standalone libraries that happen to live here for now: `socialite`. HTTP clients use [gonstruct/hyper](https://github.com/gonstruct/hyper) |
 
 Storage, encryption and mail are in [gonstruct/providers](https://github.com/gonstruct/providers).
 Env and payload validation is [gonstruct/validation](https://github.com/gonstruct/validation).
