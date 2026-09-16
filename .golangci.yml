@@ -1,0 +1,54 @@
+version: "2" # https://golangci-lint.run/usage/configuration/
+
+linters:
+  default: fast
+  disable:
+    - wsl
+    - depguard
+    - gochecknoinits
+    - nlreturn
+    - mnd
+    - misspell
+    - inamedparam
+    - gomoddirectives
+    - funcorder # Should be but we have a slight different style
+    - unqueryvet # Disabled because relationship methods often need all columns
+
+  settings:
+    lll:
+      line-length: 160
+
+    # Sprawl guards. Thresholds are deliberately generous: a big function is
+    # sometimes just how it is. These exist to catch agent-generated bloat and
+    # copy-paste, not to police honest complexity.
+    funlen:
+      lines: 120
+      statements: 70
+    cyclop:
+      max-complexity: 15
+    dupl:
+      threshold: 200
+
+
+  exclusions:
+    generated: lax
+    rules:
+      # core/ is vendored framework, kept diffable against foundation. Its queue
+      # consumers and scheduling engine are legitimately branchy and are not
+      # where agents write code.
+      - path: (^|/)core/
+        linters: [funlen, cyclop, dupl]
+      # Table-driven tests are long and repetitive on purpose, and a suite of
+      # subtests scores badly on maintainability by construction.
+      - path: _test\.go$
+        linters: [funlen, dupl, maintidx]
+
+formatters:
+  enable:
+    # - gci
+    - gofmt
+    - gofumpt
+    - goimports
+
+run:
+  allow-parallel-runners: true
