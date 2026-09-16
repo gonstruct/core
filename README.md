@@ -30,7 +30,7 @@ One package per concern, all versioned together:
 | `database/migration` | goose migrations with an environment guard |
 | `facades/*` | Package-level access with an adapter behind it: authentication, authorization, database factories and seeders |
 | `otel` | Tracing, logging, masking, HTTP capture, middleware and transports |
-| `packages/*` | Nothing left here: HTTP clients are [gonstruct/hyper](https://github.com/gonstruct/hyper), signing in with another account is [gonstruct/vouch](https://github.com/gonstruct/vouch) |
+| `packages/*` | Nothing left here: HTTP clients are [gonstruct/hyper](https://github.com/gonstruct/hyper), social sign-in is [gonstruct/social](https://github.com/gonstruct/social) |
 
 Storage, encryption and mail are in [gonstruct/providers](https://github.com/gonstruct/providers).
 Env and payload validation is [gonstruct/validation](https://github.com/gonstruct/validation).
