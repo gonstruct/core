@@ -2,10 +2,11 @@ package redis_test
 
 import (
 	"context"
-	redisconnection "github.com/gonstruct/core/redis"
 	"os"
 	"testing"
 	"time"
+
+	redisconnection "github.com/gonstruct/core/redis"
 )
 
 func TestLoadUsesDefaultConnectionSettings(t *testing.T) {
