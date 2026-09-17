@@ -1,8 +1,9 @@
 package otel
 
 import (
-	"github.com/gonstruct/core/routing/response"
 	"sync"
+
+	"github.com/gonstruct/core/routing/response"
 
 	"github.com/gin-gonic/gin"
 )

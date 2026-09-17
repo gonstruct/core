@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/gonstruct/core/otel/masking"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/gonstruct/core/otel/masking"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

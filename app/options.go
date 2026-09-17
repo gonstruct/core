@@ -2,6 +2,7 @@ package app
 
 import (
 	"embed"
+
 	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/console"
 	"github.com/gonstruct/core/database/migration"

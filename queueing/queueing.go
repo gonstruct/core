@@ -3,9 +3,10 @@ package queueing
 import (
 	"context"
 	"fmt"
-	"github.com/gonstruct/core/queueing/job"
 	"sync"
 	"time"
+
+	"github.com/gonstruct/core/queueing/job"
 
 	"github.com/rs/zerolog/log"
 )

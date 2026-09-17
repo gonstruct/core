@@ -1,10 +1,11 @@
 package queueing
 
 import (
+	"time"
+
 	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/queueing/job"
 	"github.com/gonstruct/core/queueing/resolvers"
-	"time"
 
 	"github.com/rs/zerolog/log"
 

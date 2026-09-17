@@ -3,8 +3,9 @@ package jwt
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gonstruct/core/facades/authentication"
 	"time"
+
+	"github.com/gonstruct/core/facades/authentication"
 
 	"github.com/golang-jwt/jwt/v5"
 )

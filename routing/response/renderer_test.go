@@ -4,12 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/gonstruct/core/routing/response"
-	"github.com/gonstruct/core/routing/response/exception"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
+
+	"github.com/gonstruct/core/routing/response"
+	"github.com/gonstruct/core/routing/response/exception"
 
 	"github.com/gin-gonic/gin"
 )

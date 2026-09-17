@@ -2,6 +2,7 @@ package otel
 
 import (
 	"fmt"
+
 	"github.com/gonstruct/core/routing/response"
 
 	"github.com/gin-gonic/gin"

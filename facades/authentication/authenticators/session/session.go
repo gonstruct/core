@@ -21,8 +21,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/gonstruct/core/facades/authentication"
 	"time"
+
+	"github.com/gonstruct/core/facades/authentication"
 
 	"github.com/aarondl/sqlboiler/v4/boil"
 )

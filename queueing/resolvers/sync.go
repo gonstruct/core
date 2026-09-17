@@ -2,9 +2,10 @@ package resolvers
 
 import (
 	"context"
+	"time"
+
 	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/queueing/job"
-	"time"
 
 	"github.com/rs/zerolog/log"
 )

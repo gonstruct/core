@@ -2,14 +2,15 @@ package routing
 
 import (
 	"fmt"
-	"github.com/gonstruct/core/console"
-	"github.com/gonstruct/core/routing/requestid"
-	"github.com/gonstruct/core/routing/response"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/gonstruct/core/console"
+	"github.com/gonstruct/core/routing/requestid"
+	"github.com/gonstruct/core/routing/response"
 
 	"github.com/rs/zerolog/log"
 

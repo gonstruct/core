@@ -6,9 +6,10 @@ package ratelimit
 
 import (
 	"context"
-	"github.com/gonstruct/core/cache"
 	"strconv"
 	"time"
+
+	"github.com/gonstruct/core/cache"
 )
 
 // Limit is the maximum number of hits allowed within a decay window.

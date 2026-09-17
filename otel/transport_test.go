@@ -3,11 +3,12 @@ package otel_test
 import (
 	"context"
 	"errors"
-	coreotel "github.com/gonstruct/core/otel"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	coreotel "github.com/gonstruct/core/otel"
 
 	otelapi "go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"

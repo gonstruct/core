@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"fmt"
+
 	"github.com/gonstruct/core/otel"
 )
 

@@ -2,6 +2,7 @@ package response
 
 import (
 	"errors"
+
 	"github.com/gonstruct/core/routing/response/exception"
 )
 

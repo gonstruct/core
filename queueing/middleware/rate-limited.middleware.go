@@ -4,10 +4,11 @@ package middleware
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/queueing/job"
 	"github.com/gonstruct/core/ratelimit"
-	"time"
 
 	"github.com/rs/zerolog/log"
 )

@@ -12,6 +12,7 @@ package otel
 
 import (
 	"context"
+
 	"github.com/gonstruct/core/otel/masking"
 
 	"github.com/gin-gonic/gin"

@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"os"
+	"time"
+
 	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/console"
@@ -10,8 +13,6 @@ import (
 	"github.com/gonstruct/core/queueing"
 	"github.com/gonstruct/core/routing"
 	"github.com/gonstruct/core/scheduling"
-	"os"
-	"time"
 
 	"github.com/rs/zerolog/log"
 

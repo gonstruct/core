@@ -3,8 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/gonstruct/core/console"
 	"strings"
+
+	"github.com/gonstruct/core/console"
 
 	"github.com/rs/zerolog/log"
 )

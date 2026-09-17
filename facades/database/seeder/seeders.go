@@ -2,8 +2,9 @@ package seeder
 
 import (
 	"fmt"
-	"github.com/gonstruct/core/console"
 	"strings"
+
+	"github.com/gonstruct/core/console"
 )
 
 type seeder interface {

@@ -2,10 +2,11 @@ package response
 
 import (
 	"fmt"
-	"github.com/gonstruct/core/routing/resource"
 	"net/http"
 	"os"
 	"sort"
+
+	"github.com/gonstruct/core/routing/resource"
 
 	"github.com/gin-gonic/gin"
 )

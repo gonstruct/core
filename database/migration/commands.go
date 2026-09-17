@@ -2,6 +2,7 @@ package migration
 
 import (
 	"flag"
+
 	"github.com/gonstruct/core/console"
 )
 

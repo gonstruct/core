@@ -2,9 +2,10 @@ package masking_test
 
 import (
 	"encoding/json"
-	"github.com/gonstruct/core/otel/masking"
 	"strings"
 	"testing"
+
+	"github.com/gonstruct/core/otel/masking"
 )
 
 func TestRedactsSensitiveKeys(t *testing.T) {

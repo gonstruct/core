@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/queueing/job"
 	redisconnection "github.com/gonstruct/core/redis"
-	"strings"
-	"time"
 
 	"github.com/rs/zerolog/log"
 

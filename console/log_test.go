@@ -2,11 +2,12 @@ package console_test
 
 import (
 	"context"
-	"github.com/gonstruct/core/console"
-	"github.com/gonstruct/core/otel"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gonstruct/core/console"
+	"github.com/gonstruct/core/otel"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"

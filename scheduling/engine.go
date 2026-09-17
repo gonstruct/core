@@ -3,11 +3,12 @@ package scheduling
 import (
 	"context"
 	"fmt"
-	otelcore "github.com/gonstruct/core/otel"
-	"github.com/gonstruct/core/scheduling/command"
 	"os"
 	"slices"
 	"time"
+
+	otelcore "github.com/gonstruct/core/otel"
+	"github.com/gonstruct/core/scheduling/command"
 
 	"github.com/rs/zerolog/log"
 

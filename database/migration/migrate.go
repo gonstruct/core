@@ -2,9 +2,10 @@ package migration
 
 import (
 	"context"
-	"github.com/gonstruct/core/console"
 	"path/filepath"
 	"strings"
+
+	"github.com/gonstruct/core/console"
 
 	"github.com/rs/zerolog/log"
 

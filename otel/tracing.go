@@ -1,11 +1,12 @@
 package otel
 
 import (
-	"github.com/gonstruct/core/otel/httpcapture"
-	"github.com/gonstruct/core/routing/requestid"
 	"net/http"
 	"slices"
 	"strings"
+
+	"github.com/gonstruct/core/otel/httpcapture"
+	"github.com/gonstruct/core/routing/requestid"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"

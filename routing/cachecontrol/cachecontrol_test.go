@@ -1,10 +1,11 @@
 package cachecontrol_test
 
 import (
-	"github.com/gonstruct/core/routing/cachecontrol"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gonstruct/core/routing/cachecontrol"
 
 	"github.com/gin-gonic/gin"
 )

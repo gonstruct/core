@@ -33,10 +33,8 @@ linters:
   exclusions:
     generated: lax
     rules:
-      # The queue
-      # consumers and scheduling engine are legitimately branchy and are not
-      # where agents write code.
-      - path: (^|/)core/
+      # The queue consumers and the scheduling engine are legitimately branchy.
+      - path: ^(queueing|scheduling)/
         linters: [funlen, cyclop, dupl]
       # Table-driven tests are long and repetitive on purpose, and a suite of
       # subtests scores badly on maintainability by construction.

@@ -3,9 +3,10 @@ package resolvers
 import (
 	"context"
 	"errors"
-	redisconnection "github.com/gonstruct/core/redis"
 	"sync"
 	"time"
+
+	redisconnection "github.com/gonstruct/core/redis"
 
 	"github.com/redis/go-redis/v9"
 )

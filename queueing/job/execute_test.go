@@ -3,9 +3,10 @@ package job_test
 import (
 	"context"
 	"errors"
-	"github.com/gonstruct/core/queueing/job"
 	"testing"
 	"time"
+
+	"github.com/gonstruct/core/queueing/job"
 
 	coreotel "github.com/gonstruct/core/otel"
 
