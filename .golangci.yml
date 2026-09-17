@@ -33,7 +33,7 @@ linters:
   exclusions:
     generated: lax
     rules:
-      # core/ is vendored framework, kept diffable against foundation. Its queue
+      # The queue
       # consumers and scheduling engine are legitimately branchy and are not
       # where agents write code.
       - path: (^|/)core/

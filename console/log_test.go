@@ -44,7 +44,7 @@ func TestFailedTaskReachesTheCollector(t *testing.T) {
 	otel.Bind(otel.New(
 		otel.WithEnabled(true),
 		otel.WithEndpoint("localhost:4318"),
-		otel.WithService("contentpad", "api"),
+		otel.WithService("example", "api"),
 	))
 	t.Cleanup(func() { otel.Bind(nil) })
 

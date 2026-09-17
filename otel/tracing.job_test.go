@@ -23,7 +23,7 @@ func backgroundSetup(t *testing.T) (*coreotel.Otel, *tracetest.SpanRecorder) {
 	return coreotel.New(
 		coreotel.WithEnabled(true),
 		coreotel.WithEndpoint("localhost:4318"),
-		coreotel.WithService("contentpad", "api"),
+		coreotel.WithService("example", "api"),
 	), recorder
 }
 

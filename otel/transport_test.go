@@ -28,7 +28,7 @@ func recording(t *testing.T) (context.Context, *tracetest.SpanRecorder) {
 	coreotel.Bind(coreotel.New(
 		coreotel.WithEnabled(true),
 		coreotel.WithEndpoint("localhost:4318"),
-		coreotel.WithService("launchpad", "api"),
+		coreotel.WithService("example", "api"),
 	))
 
 	ctx, span := provider.Tracer("test").Start(context.Background(), "caller")

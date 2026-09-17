@@ -26,7 +26,7 @@ func setup(t *testing.T, options ...coreotel.Option) (*gin.Engine, *tracetest.Sp
 	options = append([]coreotel.Option{
 		coreotel.WithEnabled(true),
 		coreotel.WithEndpoint("localhost:4318"),
-		coreotel.WithService("contentpad", "api"),
+		coreotel.WithService("example", "api"),
 	}, options...)
 
 	engine := gin.New()
@@ -52,10 +52,10 @@ func attributesOf(t *testing.T, recorder *tracetest.SpanRecorder) map[string]str
 }
 
 func TestServiceNameIsNamespaced(t *testing.T) {
-	service := coreotel.New(coreotel.WithService("contentpad", "api")).Service()
+	service := coreotel.New(coreotel.WithService("example", "api")).Service()
 
-	if service != "contentpad-api" {
-		t.Errorf("expected contentpad-api, got %q", service)
+	if service != "example-api" {
+		t.Errorf("expected example-api, got %q", service)
 	}
 }
 

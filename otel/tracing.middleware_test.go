@@ -43,7 +43,7 @@ func TestMiddlewareResolvesAfterRegistration(t *testing.T) {
 	coreotel.Bind(coreotel.New(
 		coreotel.WithEnabled(true),
 		coreotel.WithEndpoint("localhost:4318"),
-		coreotel.WithService("contentpad", "api"),
+		coreotel.WithService("example", "api"),
 	))
 
 	engine.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users/1", nil))

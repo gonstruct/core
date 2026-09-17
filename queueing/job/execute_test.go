@@ -31,7 +31,7 @@ func record(t *testing.T, jobErr error) sdktrace.ReadOnlySpan {
 	coreotel.Bind(coreotel.New(
 		coreotel.WithEnabled(true),
 		coreotel.WithEndpoint("localhost:4318"),
-		coreotel.WithService("contentpad", "api"),
+		coreotel.WithService("example", "api"),
 	))
 	t.Cleanup(func() { coreotel.Bind(nil) })
 
