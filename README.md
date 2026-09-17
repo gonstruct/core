@@ -4,7 +4,10 @@ The framework for Go APIs: boot, routing, queueing, scheduling, eventing,
 cache, console, migrations, seeders, factories, authentication and
 authorization facades, and OpenTelemetry. Laravel-shaped, Go-native.
 
-Early. Packages can still change shape between commits; pin a commit and
+Early, and not optimised in any way yet: this is the framework as it grew
+inside the applications that use it, lifted out as-is. Packages can still
+change shape between commits, nothing has been tuned for speed or memory,
+and the layout is what it was rather than what it will be. Pin a commit and
 expect to follow changes.
 
 ## Layout
