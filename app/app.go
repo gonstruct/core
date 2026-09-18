@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gonstruct/core/cache"
@@ -36,6 +37,9 @@ type App struct {
 	queueing   *queueing.Queueing
 	eventing   *eventing.Eventing
 	cache      *cache.Cache
+
+	// bindings is the container: what providers bound, keyed by type.
+	bindings sync.Map
 }
 
 func Instance() *App {
