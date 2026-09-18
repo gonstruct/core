@@ -44,14 +44,23 @@ import "github.com/gonstruct/core/routing"
 
 ### The container
 
-A provider binds what the application shares, keyed by type; anything
-resolves it. Laravel's container, narrowed to what Go needs.
+What the application shares is declared at boot, next to its routes and
+providers, keyed by type. Laravel's container, narrowed to what Go needs.
 
 ```go
-app.Singleton(func() *sociable.Manager { return sociable.New(...) }) // built once, on first Make
-app.Bind(func() *mail.Message { return mail.New() })                 // built on every Make
-app.Provide(fakeManager)                                             // already built, for a test
+// boot
+app.New(app.WithSingletons(singletons.All))
 
-manager := app.Make[*sociable.Manager]()                             // anywhere; panics when nothing is bound
-app.Forget[*sociable.Manager]()                                      // a test changed the config: build again
+// app/singletons/singletons.go
+var All = app.Singletons(
+    app.Singleton(func() *sociable.Manager { return sociable.New(...) }), // built once, on first Make
+    app.Bind(func() *mail.Message { return mail.New() }),                 // built on every Make
+)
+
+// anywhere
+manager := app.Make[*sociable.Manager]()   // panics when nothing is bound
+
+// a test
+app.Provide(fakeManager)                   // already built, replaces the declaration
+app.Forget[*sociable.Manager]()            // the config changed: build again
 ```

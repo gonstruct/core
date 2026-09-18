@@ -8,82 +8,52 @@ import (
 // The container is Laravel's, narrowed to what Go needs: a binding is keyed
 // by its type, so the call site is typed and there is no string to mistype.
 //
-//	app.Singleton(func() *sociable.Manager { return sociable.New(...) })  // in a provider
-//	app.Make[*sociable.Manager]().Driver("github")                          // anywhere
+// What the application shares is declared at boot, next to its routes and
+// providers, and resolved anywhere:
 //
-// Singleton builds once and shares, Bind builds on every Make, Provide hands
-// in something already built. Forget drops what a singleton built, so a test
-// that changed the configuration gets a fresh one on the next Make.
+//	app.New(app.WithSingletons(singletons.All))               // boot
+//	app.Make[*sociable.Manager]().Driver("github")             // anywhere
+//
+// Singleton builds once, on the first Make, and shares; Bind builds on every
+// Make. Provide hands in something already built, after boot, which is how a
+// test puts a fake where the application expects the real thing. Forget
+// drops what a singleton built, so a test that changed the configuration
+// gets a fresh one on the next Make.
 
-// key is the type's identity without reflection: a typed nil pointer is a
-// comparable value whose dynamic type is *T.
-func key[T any]() any { return (*T)(nil) }
-
-type binding struct {
+// Binding is a declaration for WithSingletons: what to build for a type.
+type Binding struct {
+	key       any
 	construct func() any
 	shared    bool
-
-	once     sync.Once
-	instance any
 }
 
-func (self *binding) resolve() any {
-	if !self.shared {
-		return self.construct()
-	}
-
-	self.once.Do(func() { self.instance = self.construct() })
-
-	return self.instance
+// Singleton declares a T that is built once, on the first Make, and shared
+// after. Laravel's singleton(). It is lazy so the declaration can precede the
+// things the constructor needs.
+func Singleton[T any](construct func() T) Binding {
+	return Binding{key: key[T](), construct: func() any { return construct() }, shared: true}
 }
 
-func (self *App) bind(key any, construct func() any, shared bool) {
-	self.bindings.Store(key, &binding{construct: construct, shared: shared})
+// Bind declares a T that is built on every Make. Laravel's bind().
+func Bind[T any](construct func() T) Binding {
+	return Binding{key: key[T](), construct: func() any { return construct() }}
 }
 
-func (self *App) make(key any) (any, bool) {
-	bound, ok := self.bindings.Load(key)
-	if !ok {
-		return nil, false
-	}
-
-	return bound.(*binding).resolve(), true
+// Singletons is the list an application declares, for WithSingletons.
+func Singletons(bindings ...Binding) []Binding {
+	return bindings
 }
 
-// forget drops what a shared binding built. The constructor is kept, so the
-// next make builds again.
-func (self *App) forget(key any) {
-	bound, ok := self.bindings.Load(key)
-	if !ok {
-		return
-	}
-
-	previous := bound.(*binding)
-	self.bindings.Store(key, &binding{construct: previous.construct, shared: previous.shared})
-}
-
-// Singleton binds a T that is built once, on the first Make, and shared
-// after. Laravel's singleton(). A provider registers before the things the
-// constructor needs exist, which is why it is lazy.
-func Singleton[T any](construct func() T) {
-	Instance().bind(key[T](), func() any { return construct() }, true)
-}
-
-// Bind binds a T that is built on every Make. Laravel's bind().
-func Bind[T any](construct func() T) {
-	Instance().bind(key[T](), func() any { return construct() }, false)
-}
-
-// Provide binds a T that already exists. Laravel's instance(). It is how a
-// test puts a fake where the application expects the real thing.
+// Provide binds a T that already exists, on the bound application. Laravel's
+// instance(). A later Provide for the same type replaces the earlier one.
 func Provide[T any](value T) {
-	Instance().bind(key[T](), func() any { return value }, true)
+	Instance().bind(Binding{key: key[T](), construct: func() any { return value }, shared: true})
 }
 
-// Make resolves a T. Nothing bound for that type is a wiring mistake rather
-// than a runtime condition, so it panics.
+// Make resolves a T from the bound application. Nothing bound for that type
+// is a wiring mistake rather than a runtime condition, so it panics.
 func Make[T any]() T {
-	value, ok := Instance().make(key[T]())
+	value, ok := Instance().resolve(key[T]())
 	if !ok {
 		var zero T
 
@@ -98,4 +68,51 @@ func Make[T any]() T {
 // singleton read.
 func Forget[T any]() {
 	Instance().forget(key[T]())
+}
+
+// key is the type's identity without reflection: a typed nil pointer is a
+// comparable value whose dynamic type is *T.
+func key[T any]() any { return (*T)(nil) }
+
+// resolver is a binding as the application holds it: the declaration, and
+// what it built when it is shared.
+type resolver struct {
+	Binding
+
+	once     sync.Once
+	instance any
+}
+
+func (self *resolver) resolve() any {
+	if !self.shared {
+		return self.construct()
+	}
+
+	self.once.Do(func() { self.instance = self.construct() })
+
+	return self.instance
+}
+
+func (self *App) bind(binding Binding) {
+	self.bindings.Store(binding.key, &resolver{Binding: binding})
+}
+
+func (self *App) resolve(key any) (any, bool) {
+	bound, ok := self.bindings.Load(key)
+	if !ok {
+		return nil, false
+	}
+
+	return bound.(*resolver).resolve(), true
+}
+
+// forget drops what a shared binding built. The declaration is kept, so the
+// next Make builds again.
+func (self *App) forget(key any) {
+	bound, ok := self.bindings.Load(key)
+	if !ok {
+		return
+	}
+
+	self.bind(bound.(*resolver).Binding)
 }

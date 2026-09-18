@@ -38,7 +38,8 @@ type App struct {
 	eventing   *eventing.Eventing
 	cache      *cache.Cache
 
-	// bindings is the container: what providers bound, keyed by type.
+	// bindings is the container: what WithSingletons declared and Provide
+	// added, keyed by type.
 	bindings sync.Map
 }
 
