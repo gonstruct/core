@@ -9,22 +9,23 @@ import (
 
 type service struct{ built int }
 
-func bindApp(t *testing.T) {
+// boot builds and binds an application with the declarations, the way an
+// entrypoint does.
+func boot(t *testing.T, bindings ...app.Binding) {
 	t.Helper()
 	t.Setenv("APP_ENV", "testing")
 
-	app.New().SetInstance()
+	app.New(app.WithSingletons(app.Singletons(bindings...))).SetInstance()
 }
 
 func TestSingletonBuildsOnceAndShares(t *testing.T) {
-	bindApp(t)
-
 	builds := 0
-	app.Singleton(func() *service {
+
+	boot(t, app.Singleton(func() *service {
 		builds++
 
 		return &service{built: builds}
-	})
+	}))
 
 	if builds != 0 {
 		t.Fatal("built before anything asked for it")
@@ -38,22 +39,21 @@ func TestSingletonBuildsOnceAndShares(t *testing.T) {
 }
 
 func TestBindBuildsEveryTime(t *testing.T) {
-	bindApp(t)
-
 	builds := 0
-	app.Bind(func() *service {
+
+	boot(t, app.Bind(func() *service {
 		builds++
 
 		return &service{built: builds}
-	})
+	}))
 
 	if first, second := app.Make[*service](), app.Make[*service](); first == second || builds != 2 {
 		t.Errorf("built %d times, same instance: %v", builds, first == second)
 	}
 }
 
-func TestProvideHandsInWhatExists(t *testing.T) {
-	bindApp(t)
+func TestProvideReplacesTheDeclaration(t *testing.T) {
+	boot(t, app.Singleton(func() *service { return &service{built: 1} }))
 
 	given := &service{built: 42}
 	app.Provide(given)
@@ -62,24 +62,21 @@ func TestProvideHandsInWhatExists(t *testing.T) {
 		t.Error("not the provided instance")
 	}
 
-	// A later binding of the same type replaces it, which is what a test
-	// swapping a fake in relies on.
 	app.Provide(&service{built: 43})
 
 	if app.Make[*service]().built != 43 {
-		t.Error("the later binding did not win")
+		t.Error("the later Provide did not win")
 	}
 }
 
 func TestForgetBuildsAgain(t *testing.T) {
-	bindApp(t)
-
 	builds := 0
-	app.Singleton(func() *service {
+
+	boot(t, app.Singleton(func() *service {
 		builds++
 
 		return &service{built: builds}
-	})
+	}))
 
 	before := app.Make[*service]()
 	app.Forget[*service]()
@@ -89,12 +86,12 @@ func TestForgetBuildsAgain(t *testing.T) {
 		t.Errorf("built %d times, same instance: %v", builds, before == after)
 	}
 
-	// Forgetting what was never bound is nothing.
+	// Forgetting what was never declared is nothing.
 	app.Forget[int]()
 }
 
 func TestMakePanicsWhenNothingIsBound(t *testing.T) {
-	bindApp(t)
+	boot(t)
 
 	defer func() {
 		if recovered := recover(); recovered == nil {
@@ -106,35 +103,48 @@ func TestMakePanicsWhenNothingIsBound(t *testing.T) {
 }
 
 func TestTypesDoNotCollide(t *testing.T) {
-	bindApp(t)
-
 	type other struct{}
 
-	app.Singleton(func() *service { return &service{built: 1} })
-	app.Singleton(func() *other { return &other{} })
+	boot(t,
+		app.Singleton(func() *service { return &service{built: 1} }),
+		app.Singleton(func() *other { return &other{} }),
+	)
 
 	if app.Make[*service]().built != 1 {
 		t.Error("the other type's binding was resolved")
 	}
 }
 
-func TestSingletonUnderConcurrency(t *testing.T) {
-	bindApp(t)
+func TestApplicationsDoNotShareBindings(t *testing.T) {
+	boot(t, app.Singleton(func() *service { return &service{built: 1} }))
 
+	// Another application, bound afterwards, declared nothing.
+	boot(t)
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Error("the first application's binding leaked into the second")
+		}
+	}()
+
+	app.Make[*service]()
+}
+
+func TestSingletonUnderConcurrency(t *testing.T) {
 	var (
 		mutex  sync.Mutex
 		builds int
 		wait   sync.WaitGroup
 	)
 
-	app.Singleton(func() *service {
+	boot(t, app.Singleton(func() *service {
 		mutex.Lock()
 		defer mutex.Unlock()
 
 		builds++
 
 		return &service{}
-	})
+	}))
 
 	for range 50 {
 		wait.Go(func() { app.Make[*service]() })

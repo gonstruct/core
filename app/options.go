@@ -22,6 +22,15 @@ func WithDatabase(db database.ContextExecutor) option {
 	}
 }
 
+// WithSingletons declares what the application shares, resolved with Make.
+func WithSingletons(bindings []Binding) option {
+	return func(a *App) {
+		for _, binding := range bindings {
+			a.bind(binding)
+		}
+	}
+}
+
 func WithProviders(providers providers) option {
 	return func(a *App) {
 		if len(a.providers) == 0 {
