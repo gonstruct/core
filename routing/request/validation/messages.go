@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gonstruct/core/routing/response"
+	"github.com/gonstruct/core/routing/response/exception"
 
 	v10Validator "github.com/go-playground/validator/v10"
 	"github.com/iancoleman/strcase"
@@ -69,12 +70,19 @@ func getValidationMessage(fieldErr v10Validator.FieldError) (field string, messa
 	return field, message
 }
 
+// BuildValidationErrorResponse renders the tag validator's failures the way
+// every validation error is rendered: as an exception.ValidationError.
 func BuildValidationErrorResponse(validationErrors v10Validator.ValidationErrors) response.Response {
-	errors := make(response.ErrorsMap, len(validationErrors))
+	return response.Exception(BuildValidationError(validationErrors))
+}
+
+// BuildValidationError is the tag validator's failures as the one error a
+// field that is wrong is, whoever found it.
+func BuildValidationError(validationErrors v10Validator.ValidationErrors) exception.ValidationError {
+	validation := make(exception.ValidationError, len(validationErrors))
 	for _, err := range validationErrors {
-		field, message := getValidationMessage(err)
-		errors[field] = message
+		validation.Add(getValidationMessage(err))
 	}
 
-	return response.Errors(errors)
+	return validation
 }
