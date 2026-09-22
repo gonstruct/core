@@ -1,6 +1,7 @@
 package response
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gonstruct/core/routing/response/exception"
@@ -29,6 +30,13 @@ func Error(err error, options ...responseOption) Response {
 }
 
 func renderError(input exception.Exception, options []responseOption) Response {
+	// A field that is wrong is the one error the framework renders itself:
+	// it is the request validator's own answer, whoever raised it.
+	var validation exception.ValidationError
+	if errors.As(input.Err, &validation) {
+		return Errors(validation, options...)
+	}
+
 	for _, renderer := range exceptionRenderers {
 		rendered := renderer(input)
 		if rendered == nil {

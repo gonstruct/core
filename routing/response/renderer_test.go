@@ -126,3 +126,37 @@ func TestErrorsDoesNotOverrideAnExplicitMessage(t *testing.T) {
 		t.Fatalf("expected explicit message to be retained, got %q", message)
 	}
 }
+
+func TestValidationErrorRendersAsTheRequestValidatorDoes(t *testing.T) {
+	status, body := render(t, func(context *gin.Context) response.Response {
+		return response.Exception(fmt.Errorf("check strategy: %w", exception.Validation("pipelineId", "No such pipeline.")))
+	})
+
+	if status != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", status)
+	}
+	errs, _ := body["errors"].(map[string]any)
+	if errs["pipelineId"] != "No such pipeline." {
+		t.Fatalf("expected the problem under its field, got %v", body)
+	}
+}
+
+func TestValidationErrorRendersBeforeAnyRegisteredRenderer(t *testing.T) {
+	registerNotFoundExceptionRenderer()
+
+	problems := exception.ValidationError{}
+	problems.Add("name", "The name is taken.")
+	problems.Add("email", "")
+
+	status, body := render(t, func(context *gin.Context) response.Response {
+		return response.Error(problems.Err(), response.WithMessage("Failed to save"))
+	})
+
+	if status != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", status)
+	}
+	errs, _ := body["errors"].(map[string]any)
+	if len(errs) != 1 || errs["name"] != "The name is taken." || body["message"] != "Failed to save" {
+		t.Fatalf("expected one problem and the call site's message, got %v", body)
+	}
+}
