@@ -161,6 +161,17 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 			return true
 		},
 		ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, taskErr error) {
+			retried, _ := asynq.GetRetryCount(ctx)
+			maxRetry, _ := asynq.GetMaxRetry(ctx)
+
+			// A release is the job asking to run later, not a fault. Only a
+			// counted one that used up the last attempt goes on to fail.
+			if release, ok := job.AsRelease(taskErr); ok && (release.Silent || retried < maxRetry) {
+				log.Debug().Ctx(ctx).Str("task", task.Type()).Msgf("[queueing] Task %s released for %s", task.Type(), release.Delay)
+
+				return
+			}
+
 			constructed, err := jobs[task.Type()].Construct(task.Payload())
 			if err != nil {
 				log.Error().Ctx(ctx).Err(err).Msgf("[queueing] Failed to construct job %s: %v", task.Type(), err)
@@ -177,9 +188,6 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 			if jobWithFailing, ok := constructed.(job.JobWithFailure); ok {
 				jobWithFailing.Failure(ctx, taskErr)
 			}
-
-			retried, _ := asynq.GetRetryCount(ctx)
-			maxRetry, _ := asynq.GetMaxRetry(ctx)
 
 			if retried >= maxRetry {
 				log.Error().Ctx(ctx).Err(taskErr).Msgf("[queueing] Task %s failed after %d retries, calling failed", task.Type(), retried)

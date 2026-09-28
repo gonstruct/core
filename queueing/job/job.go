@@ -38,8 +38,8 @@ func (*Queueable[T]) Release(delay time.Duration) error {
 
 // SilentRelease re-queues the job after the given delay without counting
 // as a failure or retry attempt.
-func (*Queueable[T]) SilentRelease(reason ...string) error {
-	return DontRelease(reason...)
+func (*Queueable[T]) SilentRelease(delay time.Duration) error {
+	return SilentRelease(delay)
 }
 
 // DontRelease silently discards the job. It will not be retried and is not
