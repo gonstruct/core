@@ -11,9 +11,10 @@ import (
 
 // StartJob records a span for one job run.
 //
-// Jobs are not requests: nothing upstream started a trace, so this is a root
-// span. A failed job therefore produces an error trace of its own, which the
-// collector keeps under the same rule that keeps failed requests.
+// Jobs are not requests, so this is a root span, linked to the span that
+// dispatched the job when Dispatched put one on the context. A failed job
+// therefore produces an error trace of its own, which the collector keeps
+// under the same rule that keeps failed requests.
 //
 // The returned function must be called with the job's error, or nil. It is a
 // no-op when telemetry is disabled, so callers never branch.
@@ -23,6 +24,8 @@ func (self *Otel) StartJob(ctx context.Context, name string) (context.Context, f
 	}
 
 	ctx, span := otel.Tracer(self.Service()).Start(ctx, "job "+name,
+		trace.WithNewRoot(),
+		trace.WithLinks(dispatcherLinks(ctx)...),
 		trace.WithSpanKind(trace.SpanKindConsumer),
 		trace.WithAttributes(attribute.String(AttributeJobName, name)),
 	)

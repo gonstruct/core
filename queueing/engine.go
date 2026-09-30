@@ -1,6 +1,7 @@
 package queueing
 
 import (
+	"context"
 	"time"
 
 	"github.com/gonstruct/core/cache"
@@ -36,7 +37,7 @@ type Engine struct {
 
 type EngineResolver interface {
 	Consume(map[string]job.Job) error
-	Dispatch(job.Job, ...time.Duration) error
+	Dispatch(context.Context, job.Job, ...time.Duration) error
 }
 
 func (e *Engine) Job(job job.Job) {
