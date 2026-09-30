@@ -71,3 +71,41 @@ func TestRealFailureIsAnError(t *testing.T) {
 		t.Error("a genuine failure must still be recorded as an error")
 	}
 }
+
+type hydratingJob struct {
+	stubJob
+
+	hydrated bool
+}
+
+func (self *hydratingJob) Hydrate(ctx context.Context) error {
+	_, span := otel.Tracer("test").Start(ctx, "SELECT assets")
+	span.End()
+	self.hydrated = true
+
+	return nil
+}
+
+// Hydration reads the database. Outside the job's span every query it makes
+// is a trace of its own, with nothing to say which job it was for.
+func TestHydrationRunsInsideTheJobSpan(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)))
+	coreotel.Bind(coreotel.New(
+		coreotel.WithEnabled(true),
+		coreotel.WithEndpoint("localhost:4318"),
+		coreotel.WithService("example", "api"),
+	))
+	t.Cleanup(func() { coreotel.Bind(nil) })
+
+	current := &hydratingJob{}
+	job.Execute(context.Background(), current)
+
+	spans := recorder.Ended()
+	if !current.hydrated || len(spans) != 2 {
+		t.Fatalf("expected the job hydrated and two spans, got %d", len(spans))
+	}
+	if spans[0].Parent().SpanID() != spans[1].SpanContext().SpanID() {
+		t.Error("the hydration query should be a child of the job span")
+	}
+}

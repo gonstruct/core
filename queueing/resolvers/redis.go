@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/otel"
 	"github.com/gonstruct/core/queueing/job"
 	redisconnection "github.com/gonstruct/core/redis"
 
@@ -23,7 +24,7 @@ type Redis struct {
 	Cache  *cache.Cache
 }
 
-func (e *Redis) Dispatch(constructor job.Job, delay ...time.Duration) error {
+func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time.Duration) error {
 	payload, err := json.Marshal(constructor)
 	if err != nil {
 		return err
@@ -64,7 +65,7 @@ func (e *Redis) Dispatch(constructor job.Job, delay ...time.Duration) error {
 		}
 	}
 
-	_, err = e.Client.Enqueue(asynq.NewTask(constructor.Name(), payload), options...)
+	_, err = e.Client.Enqueue(asynq.NewTaskWithHeaders(constructor.Name(), payload, otel.Carrier(ctx)), options...)
 	if errors.Is(err, asynq.ErrTaskIDConflict) {
 		log.Warn().Msgf("Skipping duplicate job: %s", constructor.Name())
 		return nil
@@ -114,13 +115,7 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 				ctx = job.WithDebounceToken(ctx, myToken)
 			}
 
-			if jobWithHydration, ok := constructed.(job.JobWithHydration); ok {
-				if err := jobWithHydration.Hydrate(ctx); err != nil {
-					return fmt.Errorf("[queueing] failed to hydrate job %s: %w", task.Type(), err)
-				}
-			}
-
-			shouldContinue, err := job.Execute(ctx, constructed)
+			shouldContinue, err := job.Execute(otel.Dispatched(ctx, task.Headers()), constructed)
 			if !shouldContinue {
 				log.Warn().Ctx(ctx).Str("task", task.Type()).Msg("[queueing] middleware requested dontRelease, revoking task")
 				return asynq.RevokeTask
@@ -171,6 +166,11 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 
 				return
 			}
+
+			// What a job does about its failure is work of its own, outside the
+			// span of the run that failed.
+			ctx, finish := otel.Instance().StartJob(otel.Dispatched(ctx, task.Headers()), task.Type()+" failed")
+			defer finish(nil)
 
 			constructed, err := jobs[task.Type()].Construct(task.Payload())
 			if err != nil {

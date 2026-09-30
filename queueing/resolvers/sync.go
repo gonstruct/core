@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/otel"
 	"github.com/gonstruct/core/queueing/job"
 
 	"github.com/rs/zerolog/log"
@@ -14,7 +15,9 @@ type Sync struct {
 	Cache *cache.Cache
 }
 
-func (e *Sync) Dispatch(current job.Job, delay ...time.Duration) error {
+func (e *Sync) Dispatch(ctx context.Context, current job.Job, delay ...time.Duration) error {
+	carrier := otel.Carrier(ctx)
+
 	debounceable, isDebounceable := current.(job.JobWithDebounce)
 	debounceToken := ""
 	if isDebounceable && e.Cache != nil {
@@ -31,7 +34,7 @@ func (e *Sync) Dispatch(current job.Job, delay ...time.Duration) error {
 	var schedule func(time.Duration) error
 
 	handle := func() error {
-		ctx := context.Background()
+		ctx := otel.Dispatched(context.Background(), carrier)
 
 		if isDebounceable && e.Cache != nil {
 			storedToken, found, lookupErr := e.Cache.Get(ctx, job.DebounceCachePrefix+debounceable.DebounceKey())
@@ -45,12 +48,6 @@ func (e *Sync) Dispatch(current job.Job, delay ...time.Duration) error {
 				return nil
 			}
 			ctx = job.WithDebounceToken(ctx, debounceToken)
-		}
-
-		if jobWithHydration, ok := current.(job.JobWithHydration); ok {
-			if err := jobWithHydration.Hydrate(ctx); err != nil {
-				return err
-			}
 		}
 
 		shouldContinue, err := job.Execute(ctx, current)

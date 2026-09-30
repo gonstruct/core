@@ -55,7 +55,7 @@ func (q *Queueing) Dispatch(ctx context.Context, current job.Job, delay ...time.
 	}
 
 	log.Info().Msgf("[queueing] dispatching job: %s", prepared.Name())
-	if err := q.engine.Dispatch(prepared, delay...); err != nil {
+	if err := q.engine.Dispatch(ctx, prepared, delay...); err != nil {
 		log.Error().Err(err).Msgf("[queueing] failed to dispatch job: %s", prepared.Name())
 		return fmt.Errorf("[queueing] failed to dispatch job: %w", err)
 	}

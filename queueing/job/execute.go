@@ -7,8 +7,9 @@ import (
 	"github.com/gonstruct/core/otel"
 )
 
-// Execute runs the job through middleware and normalizes directive handling.
-// shouldContinue=false indicates a DontRelease directive and no retry/failure.
+// Execute hydrates the job and runs it through middleware, inside the job's
+// span, and normalizes directive handling. shouldContinue=false indicates a
+// DontRelease directive and no retry/failure.
 func Execute(ctx context.Context, current Job) (shouldContinue bool, err error) {
 	ctx, finish := otel.Instance().StartJob(ctx, current.Name())
 
@@ -23,6 +24,15 @@ func Execute(ctx context.Context, current Job) (shouldContinue bool, err error) 
 			panic(recovered)
 		}
 	}()
+
+	if hydration, ok := current.(JobWithHydration); ok {
+		if err := hydration.Hydrate(ctx); err != nil {
+			err = fmt.Errorf("[queueing] failed to hydrate job %s: %w", current.Name(), err)
+			finish(err)
+
+			return true, err
+		}
+	}
 
 	err = ExecuteWithMiddlewares(ctx, current)
 	if err == nil {
