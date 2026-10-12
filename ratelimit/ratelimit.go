@@ -42,16 +42,33 @@ func (self *Limiter) TooManyAttempts(context context.Context, key string, limit 
 	return attempts >= int64(limit.MaxAttempts), nil
 }
 
+// Remaining is how many attempts the key has left in the current window.
+func (self *Limiter) Remaining(context context.Context, key string, limit Limit) (int, error) {
+	attempts, err := self.attempts(context, key)
+	if err != nil {
+		return 0, err
+	}
+
+	return max(limit.MaxAttempts-int(attempts), 0), nil
+}
+
 // Hit records one attempt against the key and returns the running count for the
-// current window. The window timer is written once per window so the reset time
-// stays fixed rather than sliding on every hit.
+// current window.
+func (self *Limiter) Hit(context context.Context, key string, limit Limit) (int64, error) {
+	return self.Increment(context, key, limit, 1)
+}
+
+// Increment records amount attempts against the key at once, for a call that
+// weighs more than one, and returns the running count for the current window.
+// The window timer is written once per window so the reset time stays fixed
+// rather than sliding on every hit.
 //
 // The counter is created with Add (an atomic set-if-absent carrying the TTL)
 // before it is incremented, so the key is born with its expiry and a crash
 // mid-sequence can never leave an immortal counter behind. When the key expires
-// between the Add and the Increment, the increment recreates it bare — the
-// count-of-one rewrite below re-attaches the window TTL.
-func (self *Limiter) Hit(context context.Context, key string, limit Limit) (int64, error) {
+// between the Add and the increment, the increment recreates it bare — the
+// rewrite below re-attaches the window TTL.
+func (self *Limiter) Increment(context context.Context, key string, limit Limit, amount int) (int64, error) {
 	resetAt := strconv.FormatInt(time.Now().Add(limit.Decay).UnixMilli(), 10)
 	if _, err := self.cache.Add(context, self.timerKey(key), resetAt, limit.Decay); err != nil {
 		return 0, err
@@ -62,13 +79,13 @@ func (self *Limiter) Hit(context context.Context, key string, limit Limit) (int6
 		return 0, err
 	}
 
-	count, err := self.cache.Increment(context, key, limit.Decay)
+	count, err := self.cache.IncrementBy(context, key, int64(amount), limit.Decay)
 	if err != nil {
 		return 0, err
 	}
 
-	if !added && count == 1 {
-		if err := self.cache.Set(context, key, "1", limit.Decay); err != nil {
+	if !added && count == int64(amount) {
+		if err := self.cache.Set(context, key, strconv.Itoa(amount), limit.Decay); err != nil {
 			return count, err
 		}
 	}

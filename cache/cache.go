@@ -52,6 +52,15 @@ func (c *Cache) Increment(ctx context.Context, key string, ttl time.Duration) (i
 	return c.engine.Increment(ctx, key, ttl)
 }
 
+// IncrementBy atomically bumps the counter at key by amount, applying ttl
+// when the counter is born, the way Increment does for one.
+func (c *Cache) IncrementBy(ctx context.Context, key string, amount int64, ttl time.Duration) (int64, error) {
+	if err := c.ensureEngine(); err != nil {
+		return 0, fmt.Errorf("[cache] cannot increment key %q: %w", key, err)
+	}
+	return c.engine.IncrementBy(ctx, key, amount, ttl)
+}
+
 // Add writes value at key only when it does not already exist, returning whether
 // the write happened. Used for write-once markers such as a rate window timer.
 func (c *Cache) Add(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {

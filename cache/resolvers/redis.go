@@ -67,17 +67,21 @@ func (r *Redis) Delete(ctx context.Context, key string) error {
 }
 
 func (r *Redis) Increment(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	return r.IncrementBy(ctx, key, 1, ttl)
+}
+
+func (r *Redis) IncrementBy(ctx context.Context, key string, amount int64, ttl time.Duration) (int64, error) {
 	client, err := r.Client()
 	if err != nil {
 		return 0, err
 	}
 
-	count, err := client.Incr(ctx, key).Result()
+	count, err := client.IncrBy(ctx, key, amount).Result()
 	if err != nil {
 		return 0, err
 	}
 
-	if count == 1 && ttl > 0 {
+	if count == amount && ttl > 0 {
 		if err := client.Expire(ctx, key, ttl).Err(); err != nil {
 			return count, err
 		}

@@ -65,7 +65,11 @@ func (m *Memory) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func (m *Memory) Increment(_ context.Context, key string, ttl time.Duration) (int64, error) {
+func (m *Memory) Increment(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	return m.IncrementBy(ctx, key, 1, ttl)
+}
+
+func (m *Memory) IncrementBy(_ context.Context, key string, amount int64, ttl time.Duration) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -75,7 +79,7 @@ func (m *Memory) Increment(_ context.Context, key string, ttl time.Duration) (in
 	if live {
 		count, _ = strconv.ParseInt(entry.value, 10, 64)
 	}
-	count++
+	count += amount
 
 	next := memoryEntry{value: strconv.FormatInt(count, 10)}
 	switch {

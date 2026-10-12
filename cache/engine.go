@@ -30,5 +30,6 @@ type EngineResolver interface {
 	Set(ctx context.Context, key, value string, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
 	Increment(ctx context.Context, key string, ttl time.Duration) (int64, error)
+	IncrementBy(ctx context.Context, key string, amount int64, ttl time.Duration) (int64, error)
 	Add(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
 }
