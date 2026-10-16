@@ -1,11 +1,14 @@
 package routing
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/gonstruct/core/console"
@@ -113,6 +116,11 @@ func (r *Routing) Engine() *Engine {
 	return router
 }
 
+// Run serves until the process is asked to stop, by SIGTERM as a container
+// is or by an interrupt, then takes no new connections and lets the
+// requests already in flight finish, for up to SHUTDOWN_TIMEOUT (30s when
+// unset): a deploy that starts a new container beside this one and then
+// stops it drops nothing.
 func (r *Routing) Run() error {
 	engine := r.Engine()
 
@@ -130,6 +138,41 @@ func (r *Routing) Run() error {
 	}
 
 	hostWithPort := net.JoinHostPort(host, fmt.Sprint(port))
-	log.Info().Msgf("Server running on [http://%s].", hostWithPort)
-	return engine.Run(hostWithPort)
+	server := &http.Server{
+		Addr:              hostWithPort,
+		Handler:           engine.Handler(),
+		ReadHeaderTimeout: 30 * time.Second,
+	}
+
+	stopping, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+
+	served := make(chan error, 1)
+	go func() {
+		log.Info().Msgf("Server running on [http://%s].", hostWithPort)
+		served <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-served:
+		return err
+	case <-stopping.Done():
+	}
+
+	timeout := shutdownTimeout()
+	log.Info().Msgf("Stopping: finishing the requests in flight, for up to %s.", timeout)
+	finishing, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	return server.Shutdown(finishing)
+}
+
+// shutdownTimeout is how long a stopping server waits for its requests in
+// flight: SHUTDOWN_TIMEOUT as a duration, 30s when unset or unreadable.
+func shutdownTimeout() time.Duration {
+	if value, err := time.ParseDuration(os.Getenv("SHUTDOWN_TIMEOUT")); err == nil && value > 0 {
+		return value
+	}
+
+	return 30 * time.Second
 }
