@@ -10,6 +10,9 @@
 // The package speaks SQL rather than models so core stays independent of the
 // generated model package. ParseSession is where the application turns a row
 // back into whatever session type it uses, mirroring the jwt authenticator.
+//
+// A session ends at whichever comes first: its lifetime, counted from sign-in,
+// or its idle timeout, counted from the last request it made.
 package session
 
 import (
@@ -39,11 +42,27 @@ const (
 	defaultLifetime = 24 * time.Hour
 )
 
+// activityPrecision is how stale last_activity_at may get before a request
+// writes it again: one write a minute per session, not one per request. Idle
+// timeouts are therefore accurate to the minute.
+const activityPrecision = time.Minute
+
 // Details are the request facts recorded against a session so a user can review
 // and revoke their own sessions later.
 type Details struct {
 	IP        string
 	UserAgent string
+}
+
+// Record is a live session as its owner sees it, for a list of where they are
+// signed in.
+type Record struct {
+	ID             string
+	IP             string
+	UserAgent      string
+	LastActivityAt time.Time
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
 }
 
 type Service struct {
@@ -52,8 +71,14 @@ type Service struct {
 	// executor cannot be captured at registration time. Required.
 	DB func() boil.ContextExecutor
 
-	// Lifetime is how long a new session stays valid. Defaults to 24h.
+	// Lifetime is the longest a new session lasts, however active it is.
+	// Defaults to 24h, and yields to the session's own Lifetime when that is
+	// set.
 	Lifetime time.Duration
+
+	// IdleTimeout ends a session that has made no request for this long.
+	// Zero means no idle limit.
+	IdleTimeout time.Duration
 
 	// Table holds sessions. Defaults to "sessions".
 	Table string
@@ -112,13 +137,10 @@ func (s Service) ValidateToken(token string, _ ...bool) (authentication.Session,
 		return nil, ErrSessionNotFound
 	}
 
-	query := fmt.Sprintf(
-		`SELECT id, user_id FROM %s WHERE token = $1 AND expires_at > NOW()`,
-		s.table(),
-	)
+	query := fmt.Sprintf(`SELECT id, user_id FROM %s WHERE token = $1 AND %s`, s.table(), live(2))
 
 	var id, userID string
-	err := s.DB().QueryRowContext(context.Background(), query, hashToken(token)).Scan(&id, &userID)
+	err := s.DB().QueryRowContext(context.Background(), query, hashToken(token), s.idleSeconds()).Scan(&id, &userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrSessionNotFound
 	}
@@ -129,8 +151,11 @@ func (s Service) ValidateToken(token string, _ ...bool) (authentication.Session,
 	// Touching last_activity_at is what makes an idle session distinguishable
 	// from an abandoned one. A failure here must not fail the request: the
 	// session is valid regardless of whether we recorded the visit.
-	touch := fmt.Sprintf(`UPDATE %s SET last_activity_at = NOW(), updated_at = NOW() WHERE id = $1`, s.table())
-	_, _ = s.DB().ExecContext(context.Background(), touch, id)
+	touch := fmt.Sprintf(
+		`UPDATE %s SET last_activity_at = NOW(), updated_at = NOW() WHERE id = $1 AND last_activity_at < NOW() - make_interval(secs => $2::float8)`,
+		s.table(),
+	)
+	_, _ = s.DB().ExecContext(context.Background(), touch, id, activityPrecision.Seconds())
 
 	return s.ParseSession(id, userID)
 }
@@ -145,6 +170,53 @@ func (s Service) Revoke(ctx context.Context, id string) error {
 	return nil
 }
 
+// RevokeOwned ends one of the user's sessions, for a "sign out that device"
+// action. It reports false when the user holds no session with that id, which
+// includes someone else's: the caller answers both the same way.
+func (s Service) RevokeOwned(ctx context.Context, userID string, id string) (bool, error) {
+	query := fmt.Sprintf(`DELETE FROM %s WHERE id = $1 AND user_id = $2`, s.table())
+	result, err := s.DB().ExecContext(ctx, query, id, userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to revoke session: %w", err)
+	}
+
+	revoked, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to revoke session: %w", err)
+	}
+
+	return revoked > 0, nil
+}
+
+// Active lists the user's live sessions, most recently used first.
+func (s Service) Active(ctx context.Context, userID string) ([]Record, error) {
+	query := fmt.Sprintf(
+		`SELECT id, ip, user_agent, last_activity_at, created_at, expires_at FROM %s WHERE user_id = $1 AND %s ORDER BY last_activity_at DESC`,
+		s.table(), live(2),
+	)
+
+	rows, err := s.DB().QueryContext(ctx, query, userID, s.idleSeconds())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions: %w", err)
+	}
+	defer rows.Close()
+
+	records := []Record{}
+	for rows.Next() {
+		var record Record
+		if err := rows.Scan(&record.ID, &record.IP, &record.UserAgent, &record.LastActivityAt, &record.CreatedAt, &record.ExpiresAt); err != nil {
+			return nil, fmt.Errorf("failed to read session: %w", err)
+		}
+		records = append(records, record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	return records, nil
+}
+
 // RevokeForUser ends every session a user holds, for a password change or a
 // "sign out everywhere" action.
 func (s Service) RevokeForUser(ctx context.Context, userID string) error {
@@ -156,11 +228,12 @@ func (s Service) RevokeForUser(ctx context.Context, userID string) error {
 	return nil
 }
 
-// Prune removes expired rows. Expired sessions never authenticate, so this is
-// housekeeping rather than a security boundary; run it on a schedule.
+// Prune removes rows that are past their lifetime or idle timeout. Those never
+// authenticate, so this is housekeeping rather than a security boundary; run
+// it on a schedule.
 func (s Service) Prune(ctx context.Context) (int64, error) {
-	query := fmt.Sprintf(`DELETE FROM %s WHERE expires_at <= NOW()`, s.table())
-	result, err := s.DB().ExecContext(ctx, query)
+	query := fmt.Sprintf(`DELETE FROM %s WHERE NOT (%s)`, s.table(), live(1))
+	result, err := s.DB().ExecContext(ctx, query, s.idleSeconds())
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune sessions: %w", err)
 	}
@@ -182,6 +255,18 @@ func (s Service) lifetime() time.Duration {
 	}
 
 	return s.Lifetime
+}
+
+// idleSeconds is the idle timeout as live's argument. Zero or less means none.
+func (s Service) idleSeconds() float64 {
+	return max(s.IdleTimeout, 0).Seconds()
+}
+
+// live is the condition a row meets while it can authenticate: inside its
+// lifetime, and used within the idle timeout. That timeout, in seconds, is the
+// query's argument number n.
+func live(n int) string {
+	return fmt.Sprintf(`expires_at > NOW() AND ($%[1]d::float8 <= 0 OR last_activity_at > NOW() - make_interval(secs => $%[1]d::float8))`, n)
 }
 
 func newToken() (string, error) {
