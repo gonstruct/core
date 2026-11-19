@@ -67,7 +67,8 @@ func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time
 
 	_, err = e.Client.Enqueue(asynq.NewTaskWithHeaders(constructor.Name(), payload, otel.Carrier(ctx)), options...)
 	if errors.Is(err, asynq.ErrTaskIDConflict) {
-		log.Warn().Msgf("Skipping duplicate job: %s", constructor.Name())
+		// The same job is waiting already: one is enough. Expected, not a fault.
+		log.Debug().Msgf("Skipping duplicate job: %s", constructor.Name())
 		return nil
 	}
 
@@ -117,7 +118,8 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 
 			shouldContinue, err := job.Execute(otel.Dispatched(ctx, task.Headers()), constructed)
 			if !shouldContinue {
-				log.Warn().Ctx(ctx).Str("task", task.Type()).Msg("[queueing] middleware requested dontRelease, revoking task")
+				// The job chose to stop: a decision, not a fault.
+				log.Debug().Ctx(ctx).Str("task", task.Type()).Msg("[queueing] middleware requested dontRelease, revoking task")
 				return asynq.RevokeTask
 			}
 
@@ -156,6 +158,13 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 			return true
 		},
 		ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, taskErr error) {
+			// A revoked task is one the job or its debounce chose to drop.
+			// asynq hands it here all the same, but it is not retried and did
+			// not fail: on its last attempt it would otherwise be failed.
+			if errors.Is(taskErr, asynq.RevokeTask) {
+				return
+			}
+
 			retried, _ := asynq.GetRetryCount(ctx)
 			maxRetry, _ := asynq.GetMaxRetry(ctx)
 
