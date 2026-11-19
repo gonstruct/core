@@ -52,7 +52,7 @@ func (e *Sync) Dispatch(ctx context.Context, current job.Job, delay ...time.Dura
 
 		shouldContinue, err := job.Execute(ctx, current)
 		if !shouldContinue {
-			log.Warn().Str("job", current.Name()).Msg("[queueing] middleware requested dontRelease, dropping task")
+			log.Debug().Str("job", current.Name()).Msg("[queueing] middleware requested dontRelease, dropping task")
 			return err
 		}
 
