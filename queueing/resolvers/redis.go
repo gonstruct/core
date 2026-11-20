@@ -134,7 +134,12 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 
 	return asynq.NewServer(RedisClient{}, asynq.Config{
 		Concurrency: env.Number("QUEUE_CONCURRENCY"),
-		Queues:      queues,
+		// How long an idle worker waits before looking for work again.
+		// asynq waits about a second, so a job dispatched to an idle queue
+		// can sit up to 1.5 s before it starts: too long for one a person
+		// waits on. QUEUE_CHECK_INTERVAL_MS sets it; 0 or unset keeps asynq's.
+		TaskCheckInterval: time.Duration(env.Number("QUEUE_CHECK_INTERVAL_MS", 0)) * time.Millisecond,
+		Queues:            queues,
 		RetryDelayFunc: func(retries int, err error, task *asynq.Task) time.Duration {
 			if release, ok := job.AsRelease(err); ok {
 				return release.Delay
