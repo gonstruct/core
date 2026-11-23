@@ -3,7 +3,6 @@ package response
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"sort"
 
 	"github.com/gonstruct/core/routing/resource"
@@ -12,6 +11,17 @@ import (
 )
 
 type ErrorsMap map[string]string
+
+const showErrorsKey = "gonstruct.response.show-errors"
+
+// ShowErrors sets whether failed responses include their error. Routing
+// adds it from config.Server.ShowErrors.
+func ShowErrors(show bool) gin.HandlerFunc {
+	return func(context *gin.Context) {
+		context.Set(showErrorsKey, show)
+		context.Next()
+	}
+}
 
 type value[T any] struct {
 	isSet bool
@@ -86,7 +96,7 @@ func (options *responseOptions) resolve(context *gin.Context) {
 		context.AbortWithStatusJSON(options.StatusCode, resource.Resource{
 			"message": resource.When(options.Message.isSet, func() string { return options.Message.value }),
 			"code":    resource.When(options.Code.isSet, func() string { return options.Code.value }),
-			"error":   resource.When(options.Error.isSet && os.Getenv("APP_ENV") != "production", func() string { return options.Error.value.Error() }),
+			"error":   resource.When(options.Error.isSet && context.GetBool(showErrorsKey), func() string { return options.Error.value.Error() }),
 			"errors":  resource.When(options.Errors.isSet, func() ErrorsMap { return options.Errors.value }),
 		})
 

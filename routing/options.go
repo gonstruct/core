@@ -1,6 +1,9 @@
 package routing
 
-import "github.com/gonstruct/core/routing/response"
+import (
+	"github.com/gonstruct/core/config"
+	"github.com/gonstruct/core/routing/response"
+)
 
 type Option func(*Routing)
 
@@ -10,15 +13,10 @@ func WithRouters(routers ...func(*Engine)) Option {
 	}
 }
 
-func WithHealth(endpoint string) Option {
+// WithConfig is required by Run.
+func WithConfig(server config.Server) Option {
 	return func(r *Routing) {
-		r.HealthEndpoint = endpoint
-	}
-}
-
-func WithTrustedPlatform(platform string) Option {
-	return func(r *Routing) {
-		r.TrustedPlatform = platform
+		r.Config = &server
 	}
 }
 

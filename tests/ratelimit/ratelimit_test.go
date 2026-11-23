@@ -5,12 +5,12 @@ import (
 	"time"
 
 	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/ratelimit"
 )
 
 func TestIncrementWeighsACallByItsAmount(t *testing.T) {
-	t.Setenv("CACHE_DRIVER", "memory")
-	limiter := ratelimit.New(cache.New())
+	limiter := ratelimit.New(cache.New(cache.WithConfig(config.Cache{Driver: config.MemoryCacheDriver})))
 	limit := ratelimit.PerMinute(10)
 	ctx := t.Context()
 

@@ -2,6 +2,8 @@ package scheduling
 
 type Scheduling struct {
 	Schedulers []func(*Engine)
+	// Environment is matched against command.Environment(...).
+	Environment string
 }
 
 func New(options ...Option) *Scheduling {
@@ -19,6 +21,7 @@ func (s *Scheduling) Run() error {
 	if err != nil {
 		return err
 	}
+	scheduler.Environment = s.Environment
 
 	for _, f := range s.Schedulers {
 		f(scheduler)

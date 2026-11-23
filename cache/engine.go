@@ -2,20 +2,22 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gonstruct/core/cache/resolvers"
-
-	"github.com/gonstruct/validation/env"
+	"github.com/gonstruct/core/config"
 )
 
-func NewEngine() (*Engine, error) {
-	return &Engine{
-		EngineResolver: map[string]EngineResolver{
-			"memory": resolvers.NewMemory(),
-			"redis":  resolvers.NewRedis(),
-		}[env.String("CACHE_DRIVER")],
-	}, nil
+func NewEngine(cache config.Cache) (*Engine, error) {
+	switch cache.Driver {
+	case config.MemoryCacheDriver:
+		return &Engine{EngineResolver: resolvers.NewMemory()}, nil
+	case config.RedisCacheDriver:
+		return &Engine{EngineResolver: resolvers.NewRedis(cache.Connection.String())}, nil
+	default:
+		return nil, fmt.Errorf("[cache] unknown cache driver %q", cache.Driver)
+	}
 }
 
 type Engine struct {

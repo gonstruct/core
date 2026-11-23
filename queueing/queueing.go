@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/queueing/job"
 
@@ -16,6 +17,7 @@ import (
 type Queueing struct {
 	Queues []func(*Engine)
 	Config *config.Queue
+	Cache  func() *cache.Cache
 
 	engine *Engine
 	mu     sync.Mutex
@@ -78,7 +80,11 @@ func (q *Queueing) ensureEngine() error {
 		return errors.New("[queueing] no config: pass queueing.WithConfig")
 	}
 
-	engine, err := NewEngine(*q.Config)
+	shared := cache.New()
+	if q.Cache != nil {
+		shared = q.Cache()
+	}
+	engine, err := NewEngine(*q.Config, shared)
 	if err != nil {
 		return err
 	}

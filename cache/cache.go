@@ -2,12 +2,16 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/gonstruct/core/config"
 )
 
 type Cache struct {
+	config *config.Cache
 	engine *Engine
 	mu     sync.Mutex
 }
@@ -78,13 +82,13 @@ func (c *Cache) ensureEngine() error {
 		return nil
 	}
 
-	engine, err := NewEngine()
-	if err != nil {
-		return err
+	if c.config == nil {
+		return errors.New("[cache] no config: pass cache.WithConfig")
 	}
 
-	if engine.EngineResolver == nil {
-		return fmt.Errorf("no cache resolver configured (set CACHE_DRIVER)")
+	engine, err := NewEngine(*c.config)
+	if err != nil {
+		return err
 	}
 
 	c.engine = engine

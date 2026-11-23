@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/queueing"
 	"github.com/gonstruct/core/queueing/job"
@@ -30,13 +31,13 @@ func TestQueueingNeedsAConfig(t *testing.T) {
 }
 
 func TestAnUnknownDriverIsRefused(t *testing.T) {
-	if _, err := queueing.NewEngine(config.Queue{Driver: "carrier-pigeon"}); err == nil {
+	if _, err := queueing.NewEngine(config.Queue{Driver: "carrier-pigeon"}, cache.New()); err == nil {
 		t.Fatal("expected an error")
 	}
 }
 
 func TestAJobGoesOnItsGroupsQueue(t *testing.T) {
-	engine, err := queueing.NewEngine(config.Queue{Driver: config.SynchronousQueueDriver})
+	engine, err := queueing.NewEngine(config.Queue{Driver: config.SynchronousQueueDriver}, cache.New())
 	if err != nil {
 		t.Fatal(err)
 	}
