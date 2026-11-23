@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"sync/atomic"
 
 	"github.com/gonstruct/core/routing/resource"
 
@@ -13,14 +12,17 @@ import (
 
 type ErrorsMap map[string]string
 
-// showErrors is whether a failed response says the error behind it: off
-// until the app says otherwise, as it does outside production.
-var showErrors atomic.Bool
+// showErrorsKey is where a request keeps whether its failed response says
+// the error behind it.
+const showErrorsKey = "gonstruct.response.show-errors"
 
-// ShowErrors has failed responses say the error behind them, or not. The
-// app turns it on outside production.
-func ShowErrors(show bool) {
-	showErrors.Store(show)
+// ShowErrors has the failed responses of the requests it runs before say
+// the error behind them, or not: routing runs it as its config says.
+func ShowErrors(show bool) gin.HandlerFunc {
+	return func(context *gin.Context) {
+		context.Set(showErrorsKey, show)
+		context.Next()
+	}
 }
 
 type value[T any] struct {
@@ -96,7 +98,7 @@ func (options *responseOptions) resolve(context *gin.Context) {
 		context.AbortWithStatusJSON(options.StatusCode, resource.Resource{
 			"message": resource.When(options.Message.isSet, func() string { return options.Message.value }),
 			"code":    resource.When(options.Code.isSet, func() string { return options.Code.value }),
-			"error":   resource.When(options.Error.isSet && showErrors.Load(), func() string { return options.Error.value.Error() }),
+			"error":   resource.When(options.Error.isSet && context.GetBool(showErrorsKey), func() string { return options.Error.value.Error() }),
 			"errors":  resource.When(options.Errors.isSet, func() ErrorsMap { return options.Errors.value }),
 		})
 

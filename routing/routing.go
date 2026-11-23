@@ -47,6 +47,7 @@ func (r *Routing) Engine() *Engine {
 	server := r.server()
 
 	router.TrustedPlatform = server.TrustedPlatform
+	router.Engine.Use(response.ShowErrors(server.ShowErrors))
 	router.ContextWithFallback = true
 	router.RemoteIPHeaders = []string{
 		"CF-Connecting-IP",

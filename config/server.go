@@ -18,4 +18,7 @@ type Server struct {
 	// TrustedPlatform is the header the platform in front of the server
 	// puts the client's IP in, as gin's TrustedPlatform: none when empty.
 	TrustedPlatform string
+	// ShowErrors has a failed response say the error behind it: for a
+	// developer's own machine, never production.
+	ShowErrors bool
 }
