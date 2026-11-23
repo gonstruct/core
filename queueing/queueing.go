@@ -33,7 +33,7 @@ func (q *Queueing) Run() error {
 		return err
 	}
 
-	return q.engine.Consume(q.engine.jobs)
+	return q.engine.Consume(q.engine.jobs, q.engine.channels)
 }
 
 func (q *Queueing) Dispatch(ctx context.Context, current job.Job, delay ...time.Duration) error {

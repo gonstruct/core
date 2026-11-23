@@ -16,34 +16,20 @@ func (*plain) Name() string                  { return "plain" }
 func (*plain) Handle(context.Context) error  { return nil }
 func (*plain) Failed(context.Context, error) {}
 
-// weighted is on a queue shared by weight.
-type weighted struct {
-	job.Queueable[*weighted]
+// queued is on a queue, weighted when priority is set.
+type queued struct {
+	job.Queueable[*queued]
 
+	name     string
 	queue    string
 	priority int
 }
 
-func (self *weighted) Name() string             { return "weighted:" + self.queue }
-func (*weighted) Handle(context.Context) error  { return nil }
-func (*weighted) Failed(context.Context, error) {}
-func (self *weighted) Queue() string            { return self.queue }
-func (self *weighted) Priority() int            { return self.priority }
-
-// counted is on a queue with workers of its own.
-type counted struct {
-	job.Queueable[*counted]
-
-	name        string
-	queue       string
-	concurrency int
-}
-
-func (self *counted) Name() string             { return self.name }
-func (*counted) Handle(context.Context) error  { return nil }
-func (*counted) Failed(context.Context, error) {}
-func (self *counted) Queue() string            { return self.queue }
-func (self *counted) Concurrency() int         { return self.concurrency }
+func (self *queued) Name() string             { return self.name }
+func (*queued) Handle(context.Context) error  { return nil }
+func (*queued) Failed(context.Context, error) {}
+func (self *queued) Queue() string            { return self.queue }
+func (self *queued) Priority() int            { return max(1, self.priority) }
 
 func jobs(list ...job.Job) map[string]job.Job {
 	byName := map[string]job.Job{}
@@ -56,9 +42,10 @@ func jobs(list ...job.Job) map[string]job.Job {
 
 func TestPools(t *testing.T) {
 	cases := []struct {
-		name string
-		jobs map[string]job.Job
-		want []resolvers.Pool
+		name     string
+		jobs     map[string]job.Job
+		channels map[string]int
+		want     []resolvers.Pool
 	}{
 		{
 			name: "jobs without queues share the default queue",
@@ -66,47 +53,39 @@ func TestPools(t *testing.T) {
 			want: []resolvers.Pool{{Concurrency: 10, Queues: map[string]int{"default": 1}}},
 		},
 		{
-			name: "weighted queues share the workers, and the default queue stays listened to",
-			jobs: jobs(&plain{}, &weighted{queue: "mail", priority: 3}, &weighted{queue: "tracking", priority: 1}),
+			name: "queues that are not channels share the workers by priority, and the default queue stays listened to",
+			jobs: jobs(&plain{}, &queued{name: "mail", queue: "mail", priority: 3}, &queued{name: "track", queue: "tracking"}),
 			want: []resolvers.Pool{{Concurrency: 10, Queues: map[string]int{"default": 1, "mail": 3, "tracking": 1}}},
 		},
 		{
-			name: "a queue with a concurrency gets workers of its own",
-			jobs: jobs(
-				&counted{name: "launch", queue: "ci", concurrency: 150},
-				&counted{name: "destroy", queue: "ci", concurrency: 150},
-				&counted{name: "mail", queue: "background", concurrency: 100},
-				&plain{},
-			),
+			name:     "a channel gets workers of its own, however its jobs are weighted",
+			jobs:     jobs(&queued{name: "launch", queue: "ci", priority: 5}, &queued{name: "destroy", queue: "ci"}, &plain{}),
+			channels: map[string]int{"ci": 150},
 			want: []resolvers.Pool{
-				{Concurrency: 100, Queues: map[string]int{"background": 1}},
 				{Concurrency: 150, Queues: map[string]int{"ci": 1}},
 				{Concurrency: 10, Queues: map[string]int{"default": 1}},
 			},
 		},
 		{
-			name: "with every queue counted there is no shared pool",
-			jobs: jobs(&counted{name: "launch", queue: "ci", concurrency: 150}, &counted{name: "mail", queue: "default", concurrency: 100}),
+			name:     "with every queue a channel there is no shared pool",
+			jobs:     jobs(&queued{name: "launch", queue: "ci"}, &queued{name: "mail", queue: "default"}),
+			channels: map[string]int{"ci": 150, "default": 100},
 			want: []resolvers.Pool{
 				{Concurrency: 150, Queues: map[string]int{"ci": 1}},
 				{Concurrency: 100, Queues: map[string]int{"default": 1}},
 			},
 		},
 		{
-			name: "jobs on one queue asking for different counts get the most",
-			jobs: jobs(&counted{name: "launch", queue: "ci", concurrency: 150}, &counted{name: "destroy", queue: "ci", concurrency: 20}),
-			want: []resolvers.Pool{{Concurrency: 150, Queues: map[string]int{"ci": 1}}},
-		},
-		{
-			name: "a queue some jobs count and others weigh runs only on its own workers",
-			jobs: jobs(&counted{name: "launch", queue: "ci", concurrency: 150}, &weighted{queue: "ci", priority: 5}),
-			want: []resolvers.Pool{{Concurrency: 150, Queues: map[string]int{"ci": 1}}},
+			name:     "a channel of no workers is no channel",
+			jobs:     jobs(&queued{name: "launch", queue: "ci"}),
+			channels: map[string]int{"ci": 0},
+			want:     []resolvers.Pool{{Concurrency: 10, Queues: map[string]int{"ci": 1}}},
 		},
 	}
 
 	for _, each := range cases {
 		t.Run(each.name, func(t *testing.T) {
-			if got := resolvers.Pools(each.jobs, 10); !reflect.DeepEqual(got, each.want) {
+			if got := resolvers.Pools(each.jobs, each.channels, 10); !reflect.DeepEqual(got, each.want) {
 				t.Fatalf("got %+v, want %+v", got, each.want)
 			}
 		})

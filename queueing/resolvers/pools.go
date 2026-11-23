@@ -4,8 +4,6 @@ import (
 	"sort"
 
 	"github.com/gonstruct/core/queueing/job"
-
-	"github.com/rs/zerolog/log"
 )
 
 // DefaultQueue is where asynq puts a job that names no queue.
@@ -18,14 +16,13 @@ type Pool struct {
 	Queues      map[string]int
 }
 
-// Pools splits the queues the jobs name between the worker's pools. A queue
-// with a concurrency of its own (job.JobWithConcurrency) is a pool by
-// itself; the rest share one of shared workers, weighted by Priority. A job
-// that names no queue is on asynq's default one, which the shared pool then
-// listens to, or it would never run.
-func Pools(jobs map[string]job.Job, shared int) []Pool {
+// Pools splits the worker into its pools: each channel, a queue with
+// workers of its own, by itself; and every other queue the jobs name in one
+// of shared workers, weighted by Priority. A job that names no queue is on
+// asynq's default one, which the shared pool then listens to, or it would
+// never run.
+func Pools(jobs map[string]job.Job, channels map[string]int, shared int) []Pool {
 	sharing := map[string]int{}
-	own := map[string]int{}
 	for _, each := range jobs {
 		named, ok := each.(job.JobWithQueue)
 		if !ok {
@@ -33,40 +30,32 @@ func Pools(jobs map[string]job.Job, shared int) []Pool {
 
 			continue
 		}
-		queue := named.Queue()
-		if counted, ok := each.(job.JobWithConcurrency); ok && counted.Concurrency() > 0 {
-			if own[queue] != 0 && own[queue] != counted.Concurrency() {
-				log.Warn().Str("queue", queue).Msgf("[queueing] jobs on %s ask for %d and %d workers; it gets the most", queue, own[queue], counted.Concurrency())
-			}
-			own[queue] = max(own[queue], counted.Concurrency())
-
+		// A channel of no workers is no channel: its jobs share.
+		if channels[named.Queue()] > 0 {
 			continue
 		}
 		weight := 1
 		if weighted, ok := each.(job.JobWithPriority); ok {
 			weight = weighted.Priority()
 		}
-		sharing[queue] = max(sharing[queue], weight)
+		sharing[named.Queue()] = max(sharing[named.Queue()], weight)
 	}
 
-	pools := make([]Pool, 0, len(own)+1)
-	for queue, concurrency := range own {
-		// A queue some jobs give workers of their own runs only on those.
-		delete(sharing, queue)
-		pools = append(pools, Pool{Concurrency: concurrency, Queues: map[string]int{queue: 1}})
+	names := make([]string, 0, len(channels))
+	for queue, concurrency := range channels {
+		if concurrency > 0 {
+			names = append(names, queue)
+		}
 	}
-	sort.Slice(pools, func(left, right int) bool { return firstQueue(pools[left]) < firstQueue(pools[right]) })
+	sort.Strings(names)
+
+	pools := make([]Pool, 0, len(names)+1)
+	for _, queue := range names {
+		pools = append(pools, Pool{Concurrency: channels[queue], Queues: map[string]int{queue: 1}})
+	}
 	if len(sharing) > 0 || len(pools) == 0 {
 		pools = append(pools, Pool{Concurrency: shared, Queues: sharing})
 	}
 
 	return pools
-}
-
-func firstQueue(pool Pool) string {
-	for queue := range pool.Queues {
-		return queue
-	}
-
-	return ""
 }

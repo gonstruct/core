@@ -78,7 +78,7 @@ func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time
 	return err
 }
 
-func (e *Redis) Consume(jobs map[string]job.Job) error {
+func (e *Redis) Consume(jobs map[string]job.Job, channels map[string]int) error {
 	handler := asynq.NewServeMux()
 
 	for _, jobHandler := range jobs {
@@ -125,7 +125,7 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 		})
 	}
 
-	pools := Pools(jobs, env.Number("QUEUE_CONCURRENCY"))
+	pools := Pools(jobs, channels, env.Number("QUEUE_CONCURRENCY"))
 	servers := make([]*asynq.Server, 0, len(pools))
 	for _, pool := range pools {
 		log.Info().Msgf("[queueing] %d workers for %v", pool.Concurrency, pool.Queues)

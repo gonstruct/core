@@ -25,19 +25,31 @@ func NewEngine() (*Engine, error) {
 				Cache:  sharedCache,
 			},
 		}[env.String("QUEUE_DRIVER")],
-		jobs: make(map[string]job.Job),
+		jobs:     make(map[string]job.Job),
+		channels: make(map[string]int),
 	}, nil
 }
 
 type Engine struct {
 	EngineResolver
 
-	jobs map[string]job.Job
+	jobs     map[string]job.Job
+	channels map[string]int
 }
 
 type EngineResolver interface {
-	Consume(map[string]job.Job) error
+	Consume(jobs map[string]job.Job, channels map[string]int) error
 	Dispatch(context.Context, job.Job, ...time.Duration) error
+}
+
+// Channel gives a queue workers of its own: up to concurrency of its jobs
+// run at once, whatever the other queues are doing, as a Laravel Horizon
+// supervisor. A job is on it by naming it in Queue(). A queue that is not a
+// channel shares QUEUE_CONCURRENCY with the others that are not, by Priority.
+func (e *Engine) Channel(queue string, concurrency int) {
+	log.Info().Msgf("[queueing] registering channel %s with %d workers", queue, concurrency)
+
+	e.channels[queue] = concurrency
 }
 
 func (e *Engine) Job(job job.Job) {

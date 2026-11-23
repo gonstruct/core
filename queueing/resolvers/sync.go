@@ -90,6 +90,6 @@ func (e *Sync) Dispatch(ctx context.Context, current job.Job, delay ...time.Dura
 	return schedule(0)
 }
 
-func (e *Sync) Consume(jobs map[string]job.Job) error {
+func (e *Sync) Consume(jobs map[string]job.Job, channels map[string]int) error {
 	return nil
 }
