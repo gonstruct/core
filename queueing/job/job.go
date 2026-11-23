@@ -100,12 +100,16 @@ type JobWithTries interface {
 	Tries() int
 }
 
+// JobWithQueue puts a job outside a group on its own queue. The default
+// workers still run it; only a group gets workers of its own.
 type JobWithQueue interface {
 	Job
 
 	Queue() string
 }
 
+// JobWithPriority weights how often the default workers pick the job's
+// queue over the others.
 type JobWithPriority interface {
 	Job
 

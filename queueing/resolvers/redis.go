@@ -5,26 +5,31 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/otel"
 	"github.com/gonstruct/core/queueing/job"
 	redisconnection "github.com/gonstruct/core/redis"
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/gonstruct/validation/env"
 	"github.com/hibiken/asynq"
 )
 
 type Redis struct {
-	Client asynq.Client
-	Cache  *cache.Cache
+	Client     asynq.Client
+	Connection RedisClient
+	Cache      *cache.Cache
+	Config     config.Queue
 }
 
-func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time.Duration) error {
+func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, queue string, delay ...time.Duration) error {
 	payload, err := json.Marshal(constructor)
 	if err != nil {
 		return err
@@ -49,9 +54,7 @@ func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time
 		options = append(options, asynq.MaxRetry(option.Tries()-1))
 	}
 
-	if option, hasCustomQueue := constructor.(job.JobWithQueue); hasCustomQueue {
-		options = append(options, asynq.Queue(option.Queue()))
-	}
+	options = append(options, asynq.Queue(queue))
 
 	if option, hasWithoutOverlapping := constructor.(job.JobWithoutOverlapping); hasWithoutOverlapping {
 		options = append(options, asynq.TaskID(option.Unique()))
@@ -75,20 +78,10 @@ func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time
 	return err
 }
 
-//nolint:gocognit
-func (e *Redis) Consume(jobs map[string]job.Job) error {
+func (e *Redis) Consume(jobs map[string]job.Job, groups map[string]string) error {
 	handler := asynq.NewServeMux()
 
-	queues := map[string]int{}
 	for _, jobHandler := range jobs {
-		if jobWithQueue, ok := jobHandler.(job.JobWithQueue); ok {
-			queues[jobWithQueue.Queue()] = 1
-
-			if jobWithPriority, ok := jobHandler.(job.JobWithPriority); ok {
-				queues[jobWithQueue.Queue()] = jobWithPriority.Priority()
-			}
-		}
-
 		_, isDebounceableHandler := jobHandler.(job.JobWithDebounce)
 		_, hasOverlapGuard := jobHandler.(job.JobWithoutOverlapping)
 		if isDebounceableHandler && hasOverlapGuard {
@@ -132,9 +125,55 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 		})
 	}
 
-	return asynq.NewServer(RedisClient{}, asynq.Config{
-		Concurrency: env.Number("QUEUE_CONCURRENCY"),
-		Queues:      queues,
+	planned, err := Servers(jobs, groups, e.Config)
+	if err != nil {
+		return err
+	}
+	servers := make([]*asynq.Server, 0, len(planned))
+	for _, server := range planned {
+		log.Info().Msgf("[queueing] %s: %d workers for %v", server.Name, server.Concurrency, server.Queues)
+		servers = append(servers, asynq.NewServer(e.Connection, e.config(jobs, server)))
+	}
+
+	return serve(servers, handler)
+}
+
+// serve runs the servers until SIGTERM or SIGINT, then shuts them down.
+// SIGTSTP stops them taking new jobs. This mirrors asynq's Server.Run.
+func serve(servers []*asynq.Server, handler asynq.Handler) error {
+	started := make([]*asynq.Server, 0, len(servers))
+	defer func() {
+		for _, server := range started {
+			server.Shutdown()
+		}
+	}()
+	for _, server := range servers {
+		if err := server.Start(handler); err != nil {
+			return err
+		}
+		started = append(started, server)
+	}
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGTSTP)
+	defer signal.Stop(signals)
+	for received := range signals {
+		if received != syscall.SIGTSTP {
+			return nil
+		}
+		for _, server := range started {
+			server.Stop()
+		}
+	}
+
+	return nil
+}
+
+func (e *Redis) config(jobs map[string]job.Job, server Server) asynq.Config {
+	return asynq.Config{
+		Concurrency:       server.Concurrency,
+		TaskCheckInterval: server.CheckInterval,
+		Queues:            server.Queues,
 		RetryDelayFunc: func(retries int, err error, task *asynq.Task) time.Duration {
 			if release, ok := job.AsRelease(err); ok {
 				return release.Delay
@@ -206,13 +245,15 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 				log.Warn().Ctx(ctx).Err(taskErr).Msgf("[queueing] Task %s failed on attempt %d/%d, will retry", task.Type(), retried, maxRetry)
 			}
 		}),
-	}).Run(handler)
+	}
 }
 
-type RedisClient struct{}
+type RedisClient struct {
+	Connection string // a config.Redis connection name; default when empty
+}
 
 func (c RedisClient) MakeRedisClient() any {
-	client, err := redisconnection.NewClient(env.String("QUEUE_REDIS_CONNECTION", redisconnection.DefaultConnection))
+	client, err := redisconnection.NewClient(c.Connection)
 	if err != nil {
 		panic(fmt.Errorf("[queueing] invalid Redis configuration: %w", err))
 	}
