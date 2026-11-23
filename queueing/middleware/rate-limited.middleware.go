@@ -4,6 +4,7 @@ package middleware
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/gonstruct/core/cache"
@@ -26,14 +27,25 @@ type RateLimited struct {
 	limiter *ratelimit.Limiter
 }
 
-// defaultLimiter is shared across every RateLimited instance: Middlewares() is
+// sharedLimiter is shared across every RateLimited instance: Middlewares() is
 // re-evaluated on each job execution, so constructing a limiter (and with it a
 // cache engine and redis client) per instance would leak a connection pool per
-// run and, on the memory driver, reset the window every run.
-var defaultLimiter = ratelimit.New(cache.New())
+// run and, on the memory driver, reset the window every run. It counts in the
+// app's cache (UseCache); until then, in one with no config, which fails
+// open.
+var sharedLimiter atomic.Pointer[ratelimit.Limiter]
+
+func init() {
+	sharedLimiter.Store(ratelimit.New(cache.New()))
+}
+
+// UseCache has every RateLimited count in the cache: the app passes its own.
+func UseCache(counts *cache.Cache) {
+	sharedLimiter.Store(ratelimit.New(counts))
+}
 
 func NewRateLimited(key string, limit ratelimit.Limit) *RateLimited {
-	return &RateLimited{key: key, limit: limit, limiter: defaultLimiter}
+	return &RateLimited{key: key, limit: limit, limiter: sharedLimiter.Load()}
 }
 
 func (self *RateLimited) Handle(context context.Context, _ job.Job, next func(context.Context) error) error {

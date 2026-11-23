@@ -15,18 +15,25 @@ import (
 // initialised lazily on first use so the package can be imported safely from
 // anywhere without requiring an explicit boot step.
 type Redis struct {
+	connection string
 	clientOnce sync.Once
 	client     redis.UniversalClient
 	clientErr  error
 }
 
-func NewRedis() *Redis {
-	return &Redis{}
+// NewRedis is a cache on the Redis connection by that name: the default one
+// when empty.
+func NewRedis(connection string) *Redis {
+	if connection == "" {
+		connection = redisconnection.DefaultConnection
+	}
+
+	return &Redis{connection: connection}
 }
 
 func (r *Redis) Client() (redis.UniversalClient, error) {
 	r.clientOnce.Do(func() {
-		r.client, r.clientErr = redisconnection.NewClient(redisconnection.DefaultConnection)
+		r.client, r.clientErr = redisconnection.NewClient(r.connection)
 	})
 	return r.client, r.clientErr
 }

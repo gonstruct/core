@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gonstruct/core/cache"
 	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/queueing/job"
 
@@ -19,6 +20,9 @@ var ErrNoConfig = errors.New("[queueing] no config: pass queueing.WithConfig")
 type Queueing struct {
 	Queues []func(*Engine)
 	Config *config.Queue
+	// Cache is where debounced jobs keep their tokens: a cache with no
+	// config when unset, which fails a debounced dispatch.
+	Cache func() *cache.Cache
 
 	engine *Engine
 	mu     sync.Mutex
@@ -81,7 +85,11 @@ func (q *Queueing) ensureEngine() error {
 		return ErrNoConfig
 	}
 
-	engine, err := NewEngine(*q.Config)
+	shared := cache.New()
+	if q.Cache != nil {
+		shared = q.Cache()
+	}
+	engine, err := NewEngine(*q.Config, shared)
 	if err != nil {
 		return err
 	}

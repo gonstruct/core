@@ -76,7 +76,7 @@ func WithScheduling(options ...scheduling.Option) option {
 
 func WithQueueing(options ...queueing.Option) option {
 	return func(a *App) {
-		a.queueing = queueing.New(options...)
+		a.queueing = queueing.New(append([]queueing.Option{queueing.WithCache(a.Cache)}, options...)...)
 		a.console.Register("queue:work", func(*console.Console, []string) error { return a.queueing.Run() })
 	}
 }

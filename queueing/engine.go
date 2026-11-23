@@ -15,9 +15,9 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-func NewEngine(queue config.Queue) (*Engine, error) {
-	sharedCache := cache.New()
-
+// NewEngine is the queue running as configured, debouncing jobs in the
+// cache.
+func NewEngine(queue config.Queue, sharedCache *cache.Cache) (*Engine, error) {
 	var resolver EngineResolver
 	switch queue.Driver {
 	case config.SynchronousQueueDriver:

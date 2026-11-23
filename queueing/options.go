@@ -1,12 +1,23 @@
 package queueing
 
-import "github.com/gonstruct/core/config"
+import (
+	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/config"
+)
 
 type Option func(*Queueing)
 
 func WithQueues(queues ...func(*Engine)) Option {
 	return func(r *Queueing) {
 		r.Queues = append(r.Queues, queues...)
+	}
+}
+
+// WithCache is the cache queued jobs debounce in, asked for when the queue
+// first runs: the app passes its own.
+func WithCache(cache func() *cache.Cache) Option {
+	return func(r *Queueing) {
+		r.Cache = cache
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/gonstruct/core/eventing"
 	"github.com/gonstruct/core/facades/database"
 	"github.com/gonstruct/core/queueing"
+	"github.com/gonstruct/core/queueing/middleware"
 	"github.com/gonstruct/core/routing"
 	"github.com/gonstruct/core/routing/response"
 	"github.com/gonstruct/core/scheduling"
@@ -70,6 +71,9 @@ func New(configuration config.App, options ...option) *App {
 	for _, option := range options {
 		option(application)
 	}
+
+	// Rate-limited jobs count in the app's cache.
+	middleware.UseCache(application.Cache())
 
 	if err := application.providers.Register(application.ctx); err != nil {
 		log.Fatal().Err(err).Msg("Failed to register providers")
