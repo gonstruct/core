@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gonstruct/core/cache"
@@ -75,20 +78,10 @@ func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time
 	return err
 }
 
-//nolint:gocognit
 func (e *Redis) Consume(jobs map[string]job.Job) error {
 	handler := asynq.NewServeMux()
 
-	queues := map[string]int{}
 	for _, jobHandler := range jobs {
-		if jobWithQueue, ok := jobHandler.(job.JobWithQueue); ok {
-			queues[jobWithQueue.Queue()] = 1
-
-			if jobWithPriority, ok := jobHandler.(job.JobWithPriority); ok {
-				queues[jobWithQueue.Queue()] = jobWithPriority.Priority()
-			}
-		}
-
 		_, isDebounceableHandler := jobHandler.(job.JobWithDebounce)
 		_, hasOverlapGuard := jobHandler.(job.JobWithoutOverlapping)
 		if isDebounceableHandler && hasOverlapGuard {
@@ -132,9 +125,54 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 		})
 	}
 
-	return asynq.NewServer(RedisClient{}, asynq.Config{
-		Concurrency: env.Number("QUEUE_CONCURRENCY"),
-		Queues:      queues,
+	pools := Pools(jobs, env.Number("QUEUE_CONCURRENCY"))
+	servers := make([]*asynq.Server, 0, len(pools))
+	for _, pool := range pools {
+		log.Info().Msgf("[queueing] %d workers for %v", pool.Concurrency, pool.Queues)
+		servers = append(servers, asynq.NewServer(RedisClient{}, e.config(jobs, pool)))
+	}
+
+	return serve(servers, handler)
+}
+
+// serve runs every pool's server until the process is asked to stop: SIGTERM
+// or an interrupt shuts them all down, letting their jobs in flight finish;
+// SIGTSTP has them stop taking new ones first, as asynq's own Run does.
+func serve(servers []*asynq.Server, handler asynq.Handler) error {
+	started := make([]*asynq.Server, 0, len(servers))
+	defer func() {
+		for _, server := range started {
+			server.Shutdown()
+		}
+	}()
+	for _, server := range servers {
+		if err := server.Start(handler); err != nil {
+			return err
+		}
+		started = append(started, server)
+	}
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGTSTP)
+	defer signal.Stop(signals)
+	for received := range signals {
+		if received != syscall.SIGTSTP {
+			return nil
+		}
+		for _, server := range started {
+			server.Stop()
+		}
+	}
+
+	return nil
+}
+
+// config is a pool's server: its workers and queues, and how every job is
+// retried and failed, the same in every pool.
+func (e *Redis) config(jobs map[string]job.Job, pool Pool) asynq.Config {
+	return asynq.Config{
+		Concurrency: pool.Concurrency,
+		Queues:      pool.Queues,
 		RetryDelayFunc: func(retries int, err error, task *asynq.Task) time.Duration {
 			if release, ok := job.AsRelease(err); ok {
 				return release.Delay
@@ -206,7 +244,7 @@ func (e *Redis) Consume(jobs map[string]job.Job) error {
 				log.Warn().Ctx(ctx).Err(taskErr).Msgf("[queueing] Task %s failed on attempt %d/%d, will retry", task.Type(), retried, maxRetry)
 			}
 		}),
-	}).Run(handler)
+	}
 }
 
 type RedisClient struct{}

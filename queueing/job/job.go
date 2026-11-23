@@ -112,6 +112,17 @@ type JobWithPriority interface {
 	Priority() int
 }
 
+// JobWithConcurrency gives a job's queue workers of its own: that many of
+// its jobs run at once, whatever the other queues are doing, as a pool of
+// workers in Laravel's Horizon. A queue without one shares QUEUE_CONCURRENCY
+// with the other queues without one, by Priority. Every job on a queue
+// should say the same.
+type JobWithConcurrency interface {
+	JobWithQueue
+
+	Concurrency() int
+}
+
 type JobWithoutOverlapping interface {
 	Job
 
