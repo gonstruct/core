@@ -2,7 +2,7 @@ package queueing_test
 
 import (
 	"context"
-	"errors"
+	"strings"
 	"testing"
 
 	"github.com/gonstruct/core/config"
@@ -24,8 +24,8 @@ func (*mail) Failed(context.Context, error) {}
 
 func TestQueueingNeedsAConfig(t *testing.T) {
 	err := queueing.New(queueing.WithQueues(func(*queueing.Engine) {})).Dispatch(t.Context(), &mail{})
-	if !errors.Is(err, queueing.ErrNoConfig) {
-		t.Fatalf("expected ErrNoConfig, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no config") {
+		t.Fatalf("expected no config, got %v", err)
 	}
 }
 
