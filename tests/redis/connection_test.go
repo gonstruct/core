@@ -2,8 +2,8 @@ package redis_test
 
 import (
 	"context"
-	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,8 +17,8 @@ func configure(connections map[config.RedisConnectionType]config.RedisConnection
 
 func TestAConnectionNeedsAConfig(t *testing.T) {
 	// Before any Configure in this process: the first test to run.
-	if _, err := redisconnection.Load("default"); !errors.Is(err, redisconnection.ErrNoConfig) {
-		t.Fatalf("expected ErrNoConfig, got %v", err)
+	if _, err := redisconnection.Load("default"); err == nil || !strings.Contains(err.Error(), "no config") {
+		t.Fatalf("expected no config, got %v", err)
 	}
 }
 
@@ -39,7 +39,7 @@ func TestLoadUsesTheDefaultConnection(t *testing.T) {
 func TestLoadBuildsANamedSentinelConnection(t *testing.T) {
 	configure(map[config.RedisConnectionType]config.RedisConnection{
 		"queue": {
-			Mode:             redisconnection.ModeSentinel,
+			Mode:             config.SentinelRedisMode,
 			Addresses:        []string{"sentinel-1:26379", "sentinel-2:26379", "sentinel-3:26379"},
 			MasterName:       "example-queue",
 			SentinelUsername: "sentinel-user",
@@ -60,7 +60,7 @@ func TestLoadBuildsANamedSentinelConnection(t *testing.T) {
 
 func TestLoadAllowsACluster(t *testing.T) {
 	configure(map[config.RedisConnectionType]config.RedisConnection{
-		"cache": {Mode: redisconnection.ModeCluster, Addresses: []string{"cache-1:6379", "cache-2:6379", "cache-3:6379"}},
+		"cache": {Mode: config.ClusterRedisMode, Addresses: []string{"cache-1:6379", "cache-2:6379", "cache-3:6379"}},
 	})
 
 	configuration, err := redisconnection.Load("cache")
@@ -72,8 +72,8 @@ func TestLoadAllowsACluster(t *testing.T) {
 func TestLoadRefuses(t *testing.T) {
 	configure(map[config.RedisConnectionType]config.RedisConnection{
 		"no-address": {},
-		"no-master":  {Mode: redisconnection.ModeSentinel, Addresses: []string{"sentinel-1:26379"}},
-		"cluster-db": {Mode: redisconnection.ModeCluster, Addresses: []string{"cache-1:6379"}, Database: 2},
+		"no-master":  {Mode: config.SentinelRedisMode, Addresses: []string{"sentinel-1:26379"}},
+		"cluster-db": {Mode: config.ClusterRedisMode, Addresses: []string{"cache-1:6379"}, Database: 2},
 		"bad-mode":   {Mode: "ring", Addresses: []string{"a:1"}},
 		"bad-db":     {Host: "a", Port: "1", Database: 16},
 	})

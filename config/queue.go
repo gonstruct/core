@@ -2,30 +2,30 @@ package config
 
 import "time"
 
-// QueueDriver is how jobs run: sync where they are dispatched, redis on
+// queueDriver is how jobs run: sync where they are dispatched, redis on
 // the worker.
-type QueueDriver string
+type queueDriver string
 
 const (
-	SynchronousQueueDriver QueueDriver = "sync"
-	RedisQueueDriver       QueueDriver = "redis"
+	SynchronousQueueDriver queueDriver = "sync"
+	RedisQueueDriver       queueDriver = "redis"
 )
 
-func (driver QueueDriver) Values() []QueueDriver {
-	return []QueueDriver{
+func (driver queueDriver) Values() []queueDriver {
+	return []queueDriver{
 		SynchronousQueueDriver,
 		RedisQueueDriver,
 	}
 }
 
-func (driver QueueDriver) String() string {
+func (driver queueDriver) String() string {
 	return string(driver)
 }
 
 // Queue is how the queue runs, handed to queueing.WithConfig: the driver,
 // the workers of the default queue, and each group's.
 type Queue struct {
-	Driver QueueDriver
+	Driver queueDriver
 	// Concurrency is how many jobs of the default queue run at once: every
 	// job registered outside a group.
 	Concurrency int
@@ -53,6 +53,6 @@ type QueueGroup struct {
 }
 
 type RedisQueueConnection struct {
-	Driver     QueueDriver
+	Driver     queueDriver
 	Connection RedisConnectionType
 }
