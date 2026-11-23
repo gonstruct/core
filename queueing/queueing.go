@@ -14,9 +14,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// ErrNoConfig is queueing without WithConfig.
-var ErrNoConfig = errors.New("[queueing] no config: pass queueing.WithConfig")
-
 type Queueing struct {
 	Queues []func(*Engine)
 	Config *config.Queue
@@ -82,7 +79,7 @@ func (q *Queueing) ensureEngine() error {
 	}
 
 	if q.Config == nil {
-		return ErrNoConfig
+		return errors.New("[queueing] no config: pass queueing.WithConfig")
 	}
 
 	shared := cache.New()

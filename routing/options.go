@@ -14,22 +14,10 @@ func WithRouters(routers ...func(*Engine)) Option {
 }
 
 // WithConfig is how the server listens: its host, port and shutdown
-// timeout. Run needs it.
+// timeout, its health endpoint and the platform it trusts. Run needs it.
 func WithConfig(server config.Server) Option {
 	return func(r *Routing) {
 		r.Config = &server
-	}
-}
-
-func WithHealth(endpoint string) Option {
-	return func(r *Routing) {
-		r.HealthEndpoint = endpoint
-	}
-}
-
-func WithTrustedPlatform(platform string) Option {
-	return func(r *Routing) {
-		r.TrustedPlatform = platform
 	}
 }
 
