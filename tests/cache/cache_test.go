@@ -1,7 +1,7 @@
 package cache_test
 
 import (
-	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,8 +10,8 @@ import (
 )
 
 func TestACacheNeedsAConfig(t *testing.T) {
-	if _, _, err := cache.New().Get(t.Context(), "key"); !errors.Is(err, cache.ErrNoConfig) {
-		t.Fatalf("expected ErrNoConfig, got %v", err)
+	if _, _, err := cache.New().Get(t.Context(), "key"); err == nil || !strings.Contains(err.Error(), "no config") {
+		t.Fatalf("expected no config, got %v", err)
 	}
 }
 

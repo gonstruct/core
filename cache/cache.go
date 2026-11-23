@@ -10,9 +10,6 @@ import (
 	"github.com/gonstruct/core/config"
 )
 
-// ErrNoConfig is a cache used without WithConfig.
-var ErrNoConfig = errors.New("[cache] no config: pass cache.WithConfig")
-
 type Cache struct {
 	config *config.Cache
 	engine *Engine
@@ -86,7 +83,7 @@ func (c *Cache) ensureEngine() error {
 	}
 
 	if c.config == nil {
-		return ErrNoConfig
+		return errors.New("[cache] no config: pass cache.WithConfig")
 	}
 
 	engine, err := NewEngine(*c.config)
