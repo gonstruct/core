@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 type queueDriver string
 
 const (
@@ -19,11 +21,21 @@ func (driver queueDriver) String() string {
 }
 
 type Queue struct {
-	Driver      queueDriver
-	Concurrency int
+	Driver queueDriver
+	// Concurrency and CheckInterval are for the workers that run every job
+	// outside a group.
+	Concurrency   int
+	CheckInterval time.Duration // 0 uses asynq's default of 1s
+	// Groups gives each engine.Group its own workers, by group name.
+	Groups      map[string]QueueGroup
 	Connections struct {
 		Redis RedisQueueConnection
 	}
+}
+
+type QueueGroup struct {
+	Concurrency   int
+	CheckInterval time.Duration // 0 uses asynq's default of 1s
 }
 
 type RedisQueueConnection struct {

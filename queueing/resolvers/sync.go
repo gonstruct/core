@@ -15,7 +15,7 @@ type Sync struct {
 	Cache *cache.Cache
 }
 
-func (e *Sync) Dispatch(ctx context.Context, current job.Job, delay ...time.Duration) error {
+func (e *Sync) Dispatch(ctx context.Context, current job.Job, _ string, delay ...time.Duration) error {
 	carrier := otel.Carrier(ctx)
 
 	debounceable, isDebounceable := current.(job.JobWithDebounce)
@@ -90,6 +90,6 @@ func (e *Sync) Dispatch(ctx context.Context, current job.Job, delay ...time.Dura
 	return schedule(0)
 }
 
-func (e *Sync) Consume(jobs map[string]job.Job) error {
+func (e *Sync) Consume(map[string]job.Job, map[string]string) error {
 	return nil
 }
