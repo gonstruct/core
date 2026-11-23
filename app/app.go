@@ -14,7 +14,6 @@ import (
 	"github.com/gonstruct/core/queueing"
 	"github.com/gonstruct/core/queueing/middleware"
 	"github.com/gonstruct/core/routing"
-	"github.com/gonstruct/core/routing/response"
 	"github.com/gonstruct/core/scheduling"
 
 	"github.com/rs/zerolog/log"
@@ -55,8 +54,7 @@ func Instance() *App {
 var instance *App
 
 // New builds the application from its config, which the rest of it reads:
-// its environment decides which scheduled commands run and whether failed
-// responses say their error.
+// its environment decides which scheduled commands run.
 func New(configuration config.App, options ...option) *App {
 	application := &App{
 		config:      configuration,
@@ -65,8 +63,6 @@ func New(configuration config.App, options ...option) *App {
 		createdAt:   time.Now(),
 		console:     console.New(),
 	}
-
-	response.ShowErrors(configuration.Environment != config.ProductionEnvironment)
 
 	for _, option := range options {
 		option(application)

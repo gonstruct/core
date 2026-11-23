@@ -21,16 +21,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ErrNoConfig is Run without WithConfig.
-var ErrNoConfig = errors.New("[routing] no config: pass routing.WithConfig")
-
 type Routing struct {
-	Config          *config.Server
-	Routers         []func(*Engine)
-	Middlewares     MiddlewareEngine
-	Recovery        RecoveryHandler
-	HealthEndpoint  string
-	TrustedPlatform string
+	Config      *config.Server
+	Routers     []func(*Engine)
+	Middlewares MiddlewareEngine
+	Recovery    RecoveryHandler
 }
 
 type RecoveryHandler func(context *gin.Context, recovered any) response.Response
@@ -49,8 +44,10 @@ func (r *Routing) Engine() *Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := NewEngine()
+	server := r.server()
 
-	router.TrustedPlatform = r.TrustedPlatform
+	router.TrustedPlatform = server.TrustedPlatform
+	router.Engine.Use(response.ShowErrors(server.ShowErrors))
 	router.ContextWithFallback = true
 	router.RemoteIPHeaders = []string{
 		"CF-Connecting-IP",
@@ -104,9 +101,9 @@ func (r *Routing) Engine() *Engine {
 		return response.NotFound(response.WithMessage("Route not found"))
 	})
 
-	if r.HealthEndpoint != "" {
+	if server.HealthEndpoint != "" {
 		startedAt := time.Now()
-		router.GET(r.HealthEndpoint, func(c *gin.Context) response.Response {
+		router.GET(server.HealthEndpoint, func(c *gin.Context) response.Response {
 			return response.Success(response.WithRaw(map[string]any{
 				"status": "healthy",
 				"uptime": time.Since(startedAt),
@@ -128,16 +125,16 @@ func (r *Routing) Engine() *Engine {
 // then stops it drops nothing.
 func (r *Routing) Run() error {
 	if r.Config == nil {
-		return ErrNoConfig
+		return errors.New("[routing] no config: pass routing.WithConfig")
 	}
 	engine := r.Engine()
 
-	host, port := r.Config.Host, r.Config.Port
-	if host == "" {
-		host = "0.0.0.0"
+	host, port := "0.0.0.0", 80
+	if r.Config.Host != "" {
+		host = r.Config.Host
 	}
-	if port == 0 {
-		port = 80
+	if r.Config.Port != 0 {
+		port = r.Config.Port
 	}
 
 	hostWithPort := net.JoinHostPort(host, fmt.Sprint(port))
@@ -162,13 +159,23 @@ func (r *Routing) Run() error {
 	case <-stopping.Done():
 	}
 
-	timeout := r.Config.ShutdownTimeout
-	if timeout <= 0 {
-		timeout = 30 * time.Second
+	timeout := 30 * time.Second
+	if r.Config.ShutdownTimeout > 0 {
+		timeout = r.Config.ShutdownTimeout
 	}
 	log.Info().Msgf("Stopping: finishing the requests in flight, for up to %s.", timeout)
 	finishing, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	return server.Shutdown(finishing)
+}
+
+// server is the config the routes are built from: none yet when only the
+// engine is asked for, as a test does.
+func (r *Routing) server() config.Server {
+	if r.Config == nil {
+		return config.Server{}
+	}
+
+	return *r.Config
 }
