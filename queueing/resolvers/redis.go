@@ -129,20 +129,24 @@ func (e *Redis) Consume(jobs map[string]job.Job, groups map[string]string) error
 		})
 	}
 
-	pools, err := Pools(jobs, groups, e.Config)
+	planned, err := Servers(jobs, groups, e.Config)
 	if err != nil {
 		return err
 	}
-	servers := make([]*asynq.Server, 0, len(pools))
-	for _, pool := range pools {
-		log.Info().Msgf("[queueing] %s: %d workers for %v", pool.Name, pool.Concurrency, pool.Queues)
-		servers = append(servers, asynq.NewServer(e.Connection, e.config(jobs, pool)))
+	servers := make([]*asynq.Server, 0, len(planned))
+	for _, server := range planned {
+		name := server.Group
+		if name == "" {
+			name = "default"
+		}
+		log.Info().Msgf("[queueing] %s: %d workers for %v", name, server.Concurrency, server.Queues)
+		servers = append(servers, asynq.NewServer(e.Connection, e.config(jobs, server)))
 	}
 
 	return serve(servers, handler)
 }
 
-// serve runs every pool's server until the process is asked to stop: SIGTERM
+// serve runs every server until the process is asked to stop: SIGTERM
 // or an interrupt shuts them all down, letting their jobs in flight finish;
 // SIGTSTP has them stop taking new ones first, as asynq's own Run does.
 func serve(servers []*asynq.Server, handler asynq.Handler) error {
@@ -174,12 +178,12 @@ func serve(servers []*asynq.Server, handler asynq.Handler) error {
 	return nil
 }
 
-// config is a pool's server: its workers and queues, and how every job is
-// retried and failed, the same in every pool.
-func (e *Redis) config(jobs map[string]job.Job, pool Pool) asynq.Config {
+// config is a server's asynq config: its workers and queues, and how every
+// job is retried and failed, the same on every server.
+func (e *Redis) config(jobs map[string]job.Job, server Server) asynq.Config {
 	return asynq.Config{
-		Concurrency: pool.Concurrency,
-		Queues:      pool.Queues,
+		Concurrency: server.Concurrency,
+		Queues:      server.Queues,
 		RetryDelayFunc: func(retries int, err error, task *asynq.Task) time.Duration {
 			if release, ok := job.AsRelease(err); ok {
 				return release.Delay
