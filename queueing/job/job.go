@@ -100,12 +100,19 @@ type JobWithTries interface {
 	Tries() int
 }
 
+// JobWithQueue is a job outside a group that waits on a queue of its own
+// name instead of the default one. It still runs on the default workers,
+// which take from its queue by its Priority: it reserves no workers, as a
+// group does. In a group, Queue() is ignored.
 type JobWithQueue interface {
 	Job
 
 	Queue() string
 }
 
+// JobWithPriority is how much more often the default workers take from
+// its queue than from one of priority 1, when both have jobs waiting: a
+// weight, not a reservation.
 type JobWithPriority interface {
 	Job
 

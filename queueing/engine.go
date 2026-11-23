@@ -60,7 +60,10 @@ func (e *Engine) Job(job job.Job) {
 //		group.Job(new(LaunchRunnerJob))
 //	})
 //
-// A job in a group goes on the group's queue, whatever its Queue() says.
+// A job in a group goes on the group's queue, whatever its Queue() says,
+// and only the group's workers run it, so no other job can hold it up. Jobs
+// outside a group share the default workers; their Queue() and Priority()
+// only weight which of them those take next.
 func (e *Engine) Group(name string, register func(*Group)) {
 	register(&Group{name: name, engine: e})
 }
