@@ -1,68 +1,81 @@
 package resolvers
 
 import (
+	"fmt"
+	"sort"
+
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/queueing/job"
+
+	"github.com/rs/zerolog/log"
 )
 
 // DefaultQueue is where asynq puts a job that names no queue.
 const DefaultQueue = "default"
 
-// SharedPool is the name of the pool of the queues no supervisor reads.
-const SharedPool = "shared"
-
-// Supervisor is a group of workers, as in Laravel Horizon: up to Workers
-// jobs at once, from its Queues, in the order given.
-type Supervisor struct {
-	Name    string
-	Workers int
-	Queues  []string
-}
+// DefaultPool is the name of the pool of every job outside a group.
+const DefaultPool = "default"
 
 // Pool is what one asynq server of the worker runs: Concurrency workers
-// taking from Queues, by weight, or highest first when Strict.
+// taking from Queues, by weight.
 type Pool struct {
 	Name        string
 	Concurrency int
 	Queues      map[string]int
-	Strict      bool
 }
 
-// Pools is a pool for each supervisor with workers, and one of shared
-// workers for every other queue the jobs name, weighted by Priority. A job
-// that names no queue is on asynq's default one, which the shared pool then
-// reads unless a supervisor does, or it would never run.
-func Pools(jobs map[string]job.Job, supervisors []Supervisor, shared int) []Pool {
-	supervised := map[string]bool{}
-	pools := make([]Pool, 0, len(supervisors)+1)
-	for _, supervisor := range supervisors {
-		if supervisor.Workers < 1 || len(supervisor.Queues) == 0 {
-			continue
+// Pools is a pool for each group, on its queue with the workers the config
+// gives it, and one of the config's Concurrency for every job outside a
+// group: on the queue it names, weighted by Priority, or the default one. A
+// group the config gives no workers is an error, not a silent share.
+func Pools(jobs map[string]job.Job, groups map[string]string, queue config.Queue) ([]Pool, error) {
+	grouped := map[string]bool{}
+	for _, group := range groups {
+		grouped[group] = true
+	}
+	names := make([]string, 0, len(grouped))
+	for group := range grouped {
+		names = append(names, group)
+	}
+	sort.Strings(names)
+
+	pools := make([]Pool, 0, len(names)+1)
+	for _, group := range names {
+		workers := queue.Groups[group].Concurrency
+		if workers < 1 {
+			return nil, fmt.Errorf("[queueing] queue group %s has no workers: give it a Concurrency in the config's Groups", group)
 		}
-		// The first queue weighs the most; strict, it is emptied first.
-		queues := make(map[string]int, len(supervisor.Queues))
-		for index, queue := range supervisor.Queues {
-			queues[queue] = len(supervisor.Queues) - index
-			supervised[queue] = true
+		pools = append(pools, Pool{Name: group, Concurrency: workers, Queues: map[string]int{group: 1}})
+	}
+	for group := range queue.Groups {
+		if !grouped[group] {
+			log.Warn().Msgf("[queueing] the config gives queue group %s workers, but no jobs are registered in it", group)
 		}
-		pools = append(pools, Pool{Name: supervisor.Name, Concurrency: supervisor.Workers, Queues: queues, Strict: len(queues) > 1})
 	}
 
 	sharing := map[string]int{}
-	for _, each := range jobs {
-		queue, weight := DefaultQueue, 1
+	for name, each := range jobs {
+		if _, inGroup := groups[name]; inGroup {
+			continue
+		}
+		queueName, weight := DefaultQueue, 1
 		if named, ok := each.(job.JobWithQueue); ok {
-			queue = named.Queue()
+			queueName = named.Queue()
 		}
 		if weighted, ok := each.(job.JobWithPriority); ok {
 			weight = weighted.Priority()
 		}
-		if !supervised[queue] {
-			sharing[queue] = max(sharing[queue], weight)
+		if grouped[queueName] {
+			return nil, fmt.Errorf("[queueing] job %s names queue %s, which is a group's: register it in the group", name, queueName)
 		}
+		sharing[queueName] = max(sharing[queueName], weight)
 	}
 	if len(sharing) > 0 || len(pools) == 0 {
-		pools = append(pools, Pool{Name: SharedPool, Concurrency: shared, Queues: sharing})
+		if queue.Concurrency < 1 {
+			return nil, fmt.Errorf("[queueing] the default queue has no workers: give the config a Concurrency")
+		}
+		pools = append(pools, Pool{Name: DefaultPool, Concurrency: queue.Concurrency, Queues: sharing})
 	}
 
-	return pools
+	return pools, nil
 }

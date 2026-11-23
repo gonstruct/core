@@ -2,60 +2,87 @@ package queueing
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/queueing/job"
 	"github.com/gonstruct/core/queueing/resolvers"
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/gonstruct/validation/env"
 	"github.com/hibiken/asynq"
 )
 
-func NewEngine() (*Engine, error) {
+func NewEngine(queue config.Queue) (*Engine, error) {
 	sharedCache := cache.New()
 
-	return &Engine{
-		EngineResolver: map[string]EngineResolver{
-			"sync": &resolvers.Sync{Cache: sharedCache},
-			"redis": &resolvers.Redis{
-				Client: *asynq.NewClient(resolvers.RedisClient{}),
-				Cache:  sharedCache,
-			},
-		}[env.String("QUEUE_DRIVER")],
-		jobs: make(map[string]job.Job),
-	}, nil
+	var resolver EngineResolver
+	switch queue.Driver {
+	case config.SynchronousQueueDriver:
+		resolver = &resolvers.Sync{Cache: sharedCache}
+	case config.RedisQueueDriver:
+		connection := resolvers.RedisClient{Connection: queue.Connections.Redis.Connection.String()}
+		resolver = &resolvers.Redis{Client: *asynq.NewClient(connection), Connection: connection, Cache: sharedCache, Config: queue}
+	default:
+		return nil, fmt.Errorf("[queueing] unknown queue driver %q", queue.Driver)
+	}
+
+	return &Engine{EngineResolver: resolver, jobs: make(map[string]job.Job), groups: make(map[string]string)}, nil
 }
 
 type Engine struct {
 	EngineResolver
 
-	jobs        map[string]job.Job
-	supervisors []resolvers.Supervisor
+	jobs map[string]job.Job
+	// groups is the group each job registered in one is in, by job name.
+	groups map[string]string
 }
 
 type EngineResolver interface {
-	Consume(jobs map[string]job.Job, supervisors []resolvers.Supervisor) error
-	Dispatch(context.Context, job.Job, ...time.Duration) error
-}
-
-// Supervisor adds a group of workers, as in Laravel Horizon: up to workers
-// jobs at once, taken from its queues, in the order given. A
-// job is on a queue by naming it in Queue(). The queues no supervisor reads
-// share QUEUE_CONCURRENCY workers, by Priority.
-//
-//	engine.Supervisor("ci", 150, "ci")
-//	engine.Supervisor("background", 100, "default")
-func (e *Engine) Supervisor(name string, workers int, queues ...string) {
-	log.Info().Msgf("[queueing] registering supervisor %s: %d workers for %v", name, workers, queues)
-
-	e.supervisors = append(e.supervisors, resolvers.Supervisor{Name: name, Workers: workers, Queues: queues})
+	// Consume runs the jobs; groups names the group of each job in one.
+	Consume(jobs map[string]job.Job, groups map[string]string) error
+	// Dispatch puts a job on a queue: its group's, or "" for the job's own.
+	Dispatch(ctx context.Context, job job.Job, queue string, delay ...time.Duration) error
 }
 
 func (e *Engine) Job(job job.Job) {
 	log.Info().Msgf("[queueing] registering job %s", job.Name())
 
 	e.jobs[job.Name()] = job
+}
+
+// Group registers jobs on a queue of their own, with workers of their own,
+// as many as the config's Groups says for its name:
+//
+//	engine.Group("ci", func(group *queueing.Group) {
+//		group.Job(new(LaunchRunnerJob))
+//	})
+//
+// A job in a group goes on the group's queue, whatever its Queue() says.
+func (e *Engine) Group(name string, register func(*Group)) {
+	register(&Group{name: name, engine: e})
+}
+
+// QueueOf is the queue a job goes on: its group's, or "" when it is in none
+// and says for itself.
+func (e *Engine) QueueOf(job job.Job) string {
+	return e.groups[job.Name()]
+}
+
+// Group is the jobs registering in one.
+type Group struct {
+	name   string
+	engine *Engine
+}
+
+func (g *Group) Job(job job.Job) {
+	if named, ok := job.(interface{ Queue() string }); ok && named.Queue() != g.name {
+		log.Warn().Msgf("[queueing] job %s says queue %s but is in group %s: it goes on %s", job.Name(), named.Queue(), g.name, g.name)
+	}
+	log.Info().Msgf("[queueing] registering job %s in group %s", job.Name(), g.name)
+
+	g.engine.jobs[job.Name()] = job
+	g.engine.groups[job.Name()] = g.name
 }

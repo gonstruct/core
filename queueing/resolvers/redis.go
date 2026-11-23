@@ -12,22 +12,24 @@ import (
 	"time"
 
 	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/otel"
 	"github.com/gonstruct/core/queueing/job"
 	redisconnection "github.com/gonstruct/core/redis"
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/gonstruct/validation/env"
 	"github.com/hibiken/asynq"
 )
 
 type Redis struct {
-	Client asynq.Client
-	Cache  *cache.Cache
+	Client     asynq.Client
+	Connection RedisClient
+	Cache      *cache.Cache
+	Config     config.Queue
 }
 
-func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time.Duration) error {
+func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, queue string, delay ...time.Duration) error {
 	payload, err := json.Marshal(constructor)
 	if err != nil {
 		return err
@@ -52,7 +54,9 @@ func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time
 		options = append(options, asynq.MaxRetry(option.Tries()-1))
 	}
 
-	if option, hasCustomQueue := constructor.(job.JobWithQueue); hasCustomQueue {
+	if queue != "" {
+		options = append(options, asynq.Queue(queue))
+	} else if option, hasCustomQueue := constructor.(job.JobWithQueue); hasCustomQueue {
 		options = append(options, asynq.Queue(option.Queue()))
 	}
 
@@ -78,7 +82,7 @@ func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time
 	return err
 }
 
-func (e *Redis) Consume(jobs map[string]job.Job, supervisors []Supervisor) error {
+func (e *Redis) Consume(jobs map[string]job.Job, groups map[string]string) error {
 	handler := asynq.NewServeMux()
 
 	for _, jobHandler := range jobs {
@@ -125,11 +129,14 @@ func (e *Redis) Consume(jobs map[string]job.Job, supervisors []Supervisor) error
 		})
 	}
 
-	pools := Pools(jobs, supervisors, env.Number("QUEUE_CONCURRENCY"))
+	pools, err := Pools(jobs, groups, e.Config)
+	if err != nil {
+		return err
+	}
 	servers := make([]*asynq.Server, 0, len(pools))
 	for _, pool := range pools {
 		log.Info().Msgf("[queueing] %s: %d workers for %v", pool.Name, pool.Concurrency, pool.Queues)
-		servers = append(servers, asynq.NewServer(RedisClient{}, e.config(jobs, pool)))
+		servers = append(servers, asynq.NewServer(e.Connection, e.config(jobs, pool)))
 	}
 
 	return serve(servers, handler)
@@ -171,9 +178,8 @@ func serve(servers []*asynq.Server, handler asynq.Handler) error {
 // retried and failed, the same in every pool.
 func (e *Redis) config(jobs map[string]job.Job, pool Pool) asynq.Config {
 	return asynq.Config{
-		Concurrency:    pool.Concurrency,
-		Queues:         pool.Queues,
-		StrictPriority: pool.Strict,
+		Concurrency: pool.Concurrency,
+		Queues:      pool.Queues,
 		RetryDelayFunc: func(retries int, err error, task *asynq.Task) time.Duration {
 			if release, ok := job.AsRelease(err); ok {
 				return release.Delay
@@ -248,10 +254,18 @@ func (e *Redis) config(jobs map[string]job.Job, pool Pool) asynq.Config {
 	}
 }
 
-type RedisClient struct{}
+// RedisClient is the Redis connection the queue runs on, by name: the
+// config's Connections.Redis.Connection, or the default one.
+type RedisClient struct {
+	Connection string
+}
 
 func (c RedisClient) MakeRedisClient() any {
-	client, err := redisconnection.NewClient(env.String("QUEUE_REDIS_CONNECTION", redisconnection.DefaultConnection))
+	connection := c.Connection
+	if connection == "" {
+		connection = redisconnection.DefaultConnection
+	}
+	client, err := redisconnection.NewClient(connection)
 	if err != nil {
 		panic(fmt.Errorf("[queueing] invalid Redis configuration: %w", err))
 	}

@@ -2,17 +2,23 @@ package queueing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/queueing/job"
 
 	"github.com/rs/zerolog/log"
 )
 
+// ErrNoConfig is queueing without WithConfig.
+var ErrNoConfig = errors.New("[queueing] no config: pass queueing.WithConfig")
+
 type Queueing struct {
 	Queues []func(*Engine)
+	Config *config.Queue
 
 	engine *Engine
 	mu     sync.Mutex
@@ -33,7 +39,7 @@ func (q *Queueing) Run() error {
 		return err
 	}
 
-	return q.engine.Consume(q.engine.jobs, q.engine.supervisors)
+	return q.engine.Consume(q.engine.jobs, q.engine.groups)
 }
 
 func (q *Queueing) Dispatch(ctx context.Context, current job.Job, delay ...time.Duration) error {
@@ -55,7 +61,7 @@ func (q *Queueing) Dispatch(ctx context.Context, current job.Job, delay ...time.
 	}
 
 	log.Info().Msgf("[queueing] dispatching job: %s", prepared.Name())
-	if err := q.engine.Dispatch(ctx, prepared, delay...); err != nil {
+	if err := q.engine.Dispatch(ctx, prepared, q.engine.QueueOf(prepared), delay...); err != nil {
 		log.Error().Err(err).Msgf("[queueing] failed to dispatch job: %s", prepared.Name())
 		return fmt.Errorf("[queueing] failed to dispatch job: %w", err)
 	}
@@ -71,7 +77,11 @@ func (q *Queueing) ensureEngine() error {
 		return nil
 	}
 
-	engine, err := NewEngine()
+	if q.Config == nil {
+		return ErrNoConfig
+	}
+
+	engine, err := NewEngine(*q.Config)
 	if err != nil {
 		return err
 	}
