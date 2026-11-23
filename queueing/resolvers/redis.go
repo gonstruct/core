@@ -78,7 +78,7 @@ func (e *Redis) Dispatch(ctx context.Context, constructor job.Job, delay ...time
 	return err
 }
 
-func (e *Redis) Consume(jobs map[string]job.Job, channels map[string]int) error {
+func (e *Redis) Consume(jobs map[string]job.Job, supervisors []Supervisor) error {
 	handler := asynq.NewServeMux()
 
 	for _, jobHandler := range jobs {
@@ -125,10 +125,10 @@ func (e *Redis) Consume(jobs map[string]job.Job, channels map[string]int) error 
 		})
 	}
 
-	pools := Pools(jobs, channels, env.Number("QUEUE_CONCURRENCY"))
+	pools := Pools(jobs, supervisors, env.Number("QUEUE_CONCURRENCY"))
 	servers := make([]*asynq.Server, 0, len(pools))
 	for _, pool := range pools {
-		log.Info().Msgf("[queueing] %d workers for %v", pool.Concurrency, pool.Queues)
+		log.Info().Msgf("[queueing] %s: %d workers for %v", pool.Name, pool.Concurrency, pool.Queues)
 		servers = append(servers, asynq.NewServer(RedisClient{}, e.config(jobs, pool)))
 	}
 
@@ -171,8 +171,9 @@ func serve(servers []*asynq.Server, handler asynq.Handler) error {
 // retried and failed, the same in every pool.
 func (e *Redis) config(jobs map[string]job.Job, pool Pool) asynq.Config {
 	return asynq.Config{
-		Concurrency: pool.Concurrency,
-		Queues:      pool.Queues,
+		Concurrency:    pool.Concurrency,
+		Queues:         pool.Queues,
+		StrictPriority: pool.Strict,
 		RetryDelayFunc: func(retries int, err error, task *asynq.Task) time.Duration {
 			if release, ok := job.AsRelease(err); ok {
 				return release.Delay
