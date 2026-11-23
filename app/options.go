@@ -4,12 +4,14 @@ import (
 	"embed"
 
 	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/console"
 	"github.com/gonstruct/core/database/migration"
 	"github.com/gonstruct/core/eventing"
 	"github.com/gonstruct/core/facades/database"
 	"github.com/gonstruct/core/facades/database/seeder"
 	"github.com/gonstruct/core/queueing"
+	redisconnection "github.com/gonstruct/core/redis"
 	"github.com/gonstruct/core/routing"
 	"github.com/gonstruct/core/scheduling"
 )
@@ -51,6 +53,14 @@ func WithMigrations(files embed.FS) option {
 func WithSeeders(seeders seeder.Seeders) option {
 	return func(a *App) {
 		a.console.Add(seeder.New(a.db, seeders).Command())
+	}
+}
+
+// WithRedis registers the app's Redis connections, which the queue and the
+// cache use by name.
+func WithRedis(redis config.Redis) option {
+	return func(*App) {
+		redisconnection.Configure(redis)
 	}
 }
 

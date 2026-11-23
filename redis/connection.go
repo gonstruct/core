@@ -2,11 +2,13 @@ package redis
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
-	"os"
-	"strconv"
 	"strings"
+	"sync/atomic"
+
+	"github.com/gonstruct/core/config"
 
 	goredis "github.com/redis/go-redis/v9"
 )
@@ -31,40 +33,51 @@ type Configuration struct {
 	TLS              bool
 }
 
+// ErrNoConfig is a Redis connection asked for before Configure.
+var ErrNoConfig = errors.New("[redis] no config: pass app.WithRedis")
+
+// configured is the app's connections, by name.
+var configured atomic.Pointer[config.Redis]
+
+// Configure registers the app's Redis connections. app.WithRedis calls it.
+func Configure(redis config.Redis) {
+	configured.Store(&redis)
+}
+
+// Load is the connection by that name, as configured: the default one when
+// empty.
 func Load(connection string) (Configuration, error) {
-	prefix, err := connectionPrefix(connection)
-	if err != nil {
-		return Configuration{}, err
+	redis := configured.Load()
+	if redis == nil {
+		return Configuration{}, ErrNoConfig
+	}
+	if strings.TrimSpace(connection) == "" {
+		connection = DefaultConnection
+	}
+	settings, found := redis.Connections[config.RedisConnectionType(connection)]
+	if !found {
+		return Configuration{}, fmt.Errorf("[redis] no connection %q in the config", connection)
 	}
 
 	configuration := Configuration{
-		Mode:             strings.ToLower(setting(prefix, "MODE", ModeSingle)),
-		MasterName:       setting(prefix, "MASTER_NAME", ""),
-		Username:         setting(prefix, "USERNAME", ""),
-		Password:         setting(prefix, "PASSWORD", ""),
-		SentinelUsername: setting(prefix, "SENTINEL_USERNAME", ""),
-		SentinelPassword: setting(prefix, "SENTINEL_PASSWORD", ""),
+		Mode:             strings.ToLower(settings.Mode),
+		Addresses:        settings.Addresses,
+		MasterName:       settings.MasterName,
+		Username:         settings.Username,
+		Password:         settings.Password,
+		SentinelUsername: settings.SentinelUsername,
+		SentinelPassword: settings.SentinelPassword,
+		Database:         settings.Database,
+		TLS:              settings.TLS,
+	}
+	if configuration.Mode == "" {
+		configuration.Mode = ModeSingle
+	}
+	if len(configuration.Addresses) == 0 && settings.Host != "" && settings.Port != "" {
+		configuration.Addresses = []string{net.JoinHostPort(settings.Host, settings.Port)}
 	}
 
-	addresses, err := loadAddresses(prefix)
-	if err != nil {
-		return Configuration{}, err
-	}
-	configuration.Addresses = addresses
-
-	database, err := strconv.Atoi(setting(prefix, "DATABASE", "0"))
-	if err != nil || database < 0 || database > 15 {
-		return Configuration{}, fmt.Errorf("%s_DATABASE must be between 0 and 15", prefix)
-	}
-	configuration.Database = database
-
-	tlsEnabled, err := strconv.ParseBool(setting(prefix, "TLS", "false"))
-	if err != nil {
-		return Configuration{}, fmt.Errorf("%s_TLS must be true or false", prefix)
-	}
-	configuration.TLS = tlsEnabled
-
-	if err := configuration.validate(prefix); err != nil {
+	if err := configuration.validate(connection); err != nil {
 		return Configuration{}, err
 	}
 
@@ -104,76 +117,27 @@ func (configuration Configuration) Options() *goredis.UniversalOptions {
 	return options
 }
 
-func (configuration Configuration) validate(prefix string) error {
+func (configuration Configuration) validate(connection string) error {
+	if configuration.Database < 0 || configuration.Database > 15 {
+		return fmt.Errorf("[redis] connection %s has Database %d: 0 to 15", connection, configuration.Database)
+	}
+
 	switch configuration.Mode {
 	case ModeSingle:
 		if len(configuration.Addresses) != 1 {
-			return fmt.Errorf("%s_ADDRESSES must contain one address in single mode", prefix)
+			return fmt.Errorf("[redis] connection %s needs one address in single mode", connection)
 		}
 	case ModeSentinel:
 		if configuration.MasterName == "" {
-			return fmt.Errorf("%s_MASTER_NAME is required in sentinel mode", prefix)
+			return fmt.Errorf("[redis] connection %s needs a MasterName in sentinel mode", connection)
 		}
 	case ModeCluster:
 		if configuration.Database != 0 {
-			return fmt.Errorf("%s_DATABASE must be 0 in cluster mode", prefix)
+			return fmt.Errorf("[redis] connection %s must use Database 0 in cluster mode", connection)
 		}
 	default:
-		return fmt.Errorf("%s_MODE must be single, sentinel, or cluster", prefix)
+		return fmt.Errorf("[redis] connection %s has Mode %q: single, sentinel or cluster", connection, configuration.Mode)
 	}
 
 	return nil
-}
-
-func loadAddresses(prefix string) ([]string, error) {
-	configured := setting(prefix, "ADDRESSES", "")
-	if configured == "" {
-		host := setting(prefix, "HOST", "")
-		port := setting(prefix, "PORT", "")
-		if host == "" || port == "" {
-			return nil, fmt.Errorf("%s_ADDRESSES or %s_HOST and %s_PORT are required", prefix, prefix, prefix)
-		}
-		configured = net.JoinHostPort(host, port)
-	}
-
-	addresses := make([]string, 0)
-	for configuredAddress := range strings.SplitSeq(configured, ",") {
-		address := strings.TrimSpace(configuredAddress)
-		if address == "" {
-			continue
-		}
-		if _, _, err := net.SplitHostPort(address); err != nil {
-			return nil, fmt.Errorf("%s_ADDRESSES contains invalid address %q", prefix, address)
-		}
-		addresses = append(addresses, address)
-	}
-	if len(addresses) == 0 {
-		return nil, fmt.Errorf("%s_ADDRESSES must contain an address", prefix)
-	}
-
-	return addresses, nil
-}
-
-func setting(prefix, name, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(prefix + "_" + name)); value != "" {
-		return value
-	}
-	return fallback
-}
-
-func connectionPrefix(connection string) (string, error) {
-	connection = strings.TrimSpace(connection)
-	if connection == "" || connection == DefaultConnection {
-		return "REDIS", nil
-	}
-
-	for _, character := range connection {
-		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
-			character >= '0' && character <= '9' || character == '_' {
-			continue
-		}
-		return "", fmt.Errorf("invalid Redis connection name %q", connection)
-	}
-
-	return "REDIS_" + strings.ToUpper(connection), nil
 }
