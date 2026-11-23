@@ -2,15 +2,16 @@ package routing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/console"
 	"github.com/gonstruct/core/routing/requestid"
 	"github.com/gonstruct/core/routing/response"
@@ -20,7 +21,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ErrNoConfig is Run without WithConfig.
+var ErrNoConfig = errors.New("[routing] no config: pass routing.WithConfig")
+
 type Routing struct {
+	Config          *config.Server
 	Routers         []func(*Engine)
 	Middlewares     MiddlewareEngine
 	Recovery        RecoveryHandler
@@ -118,23 +123,21 @@ func (r *Routing) Engine() *Engine {
 
 // Run serves until the process is asked to stop, by SIGTERM as a container
 // is or by an interrupt, then takes no new connections and lets the
-// requests already in flight finish, for up to SHUTDOWN_TIMEOUT (30s when
-// unset): a deploy that starts a new container beside this one and then
-// stops it drops nothing.
+// requests already in flight finish, for up to the config's
+// ShutdownTimeout: a deploy that starts a new container beside this one and
+// then stops it drops nothing.
 func (r *Routing) Run() error {
+	if r.Config == nil {
+		return ErrNoConfig
+	}
 	engine := r.Engine()
 
-	host := "0.0.0.0"
-	port := 80
-
-	if h := os.Getenv("HOST"); h != "" {
-		host = h
+	host, port := r.Config.Host, r.Config.Port
+	if host == "" {
+		host = "0.0.0.0"
 	}
-
-	if p := os.Getenv("PORT"); p != "" {
-		if p, err := strconv.Atoi(p); err == nil {
-			port = p
-		}
+	if port == 0 {
+		port = 80
 	}
 
 	hostWithPort := net.JoinHostPort(host, fmt.Sprint(port))
@@ -159,20 +162,13 @@ func (r *Routing) Run() error {
 	case <-stopping.Done():
 	}
 
-	timeout := shutdownTimeout()
+	timeout := r.Config.ShutdownTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
 	log.Info().Msgf("Stopping: finishing the requests in flight, for up to %s.", timeout)
 	finishing, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	return server.Shutdown(finishing)
-}
-
-// shutdownTimeout is how long a stopping server waits for its requests in
-// flight: SHUTDOWN_TIMEOUT as a duration, 30s when unset or unreadable.
-func shutdownTimeout() time.Duration {
-	if value, err := time.ParseDuration(os.Getenv("SHUTDOWN_TIMEOUT")); err == nil && value > 0 {
-		return value
-	}
-
-	return 30 * time.Second
 }

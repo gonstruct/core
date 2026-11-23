@@ -1,12 +1,23 @@
 package routing
 
-import "github.com/gonstruct/core/routing/response"
+import (
+	"github.com/gonstruct/core/config"
+	"github.com/gonstruct/core/routing/response"
+)
 
 type Option func(*Routing)
 
 func WithRouters(routers ...func(*Engine)) Option {
 	return func(r *Routing) {
 		r.Routers = append(r.Routers, routers...)
+	}
+}
+
+// WithConfig is how the server listens: its host, port and shutdown
+// timeout. Run needs it.
+func WithConfig(server config.Server) Option {
+	return func(r *Routing) {
+		r.Config = &server
 	}
 }
 

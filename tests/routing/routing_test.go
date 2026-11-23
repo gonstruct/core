@@ -1,6 +1,7 @@
 package routing_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/routing"
 	"github.com/gonstruct/core/routing/response"
 
@@ -27,12 +29,10 @@ func TestRunFinishesTheRequestsInFlightWhenStopped(t *testing.T) {
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOST", "127.0.0.1")
-	t.Setenv("PORT", fmt.Sprint(port))
-	t.Setenv("SHUTDOWN_TIMEOUT", "5s")
 
 	started := make(chan struct{})
-	server := routing.New(routing.WithRouters(func(engine *routing.Engine) {
+	listening := config.Server{Host: "127.0.0.1", Port: port, ShutdownTimeout: 5 * time.Second}
+	server := routing.New(routing.WithConfig(listening), routing.WithRouters(func(engine *routing.Engine) {
 		engine.GET("/slow", func(*gin.Context) response.Response {
 			close(started)
 			time.Sleep(300 * time.Millisecond)
@@ -91,5 +91,11 @@ func TestRunFinishesTheRequestsInFlightWhenStopped(t *testing.T) {
 	}
 	if _, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second); err == nil {
 		t.Fatal("expected the stopped server to take no new connections")
+	}
+}
+
+func TestRunNeedsAConfig(t *testing.T) {
+	if err := routing.New().Run(); !errors.Is(err, routing.ErrNoConfig) {
+		t.Fatalf("expected ErrNoConfig, got %v", err)
 	}
 }
