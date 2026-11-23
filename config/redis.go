@@ -11,7 +11,7 @@ type Redis struct {
 // a cluster.
 type RedisConnection struct {
 	// Mode is single (the default when empty), sentinel or cluster.
-	Mode string
+	Mode redisMode
 	// Addresses is its servers, or its sentinels; or Host and Port for one.
 	Addresses []string
 	Host      string
@@ -25,6 +25,23 @@ type RedisConnection struct {
 	// Database is 0 to 15; always 0 in cluster mode.
 	Database int
 	TLS      bool
+}
+
+// redisMode is how a Redis connection reaches its servers.
+type redisMode string
+
+const (
+	SingleRedisMode   redisMode = "single"
+	SentinelRedisMode redisMode = "sentinel"
+	ClusterRedisMode  redisMode = "cluster"
+)
+
+func (mode redisMode) Values() []redisMode {
+	return []redisMode{SingleRedisMode, SentinelRedisMode, ClusterRedisMode}
+}
+
+func (mode redisMode) String() string {
+	return string(mode)
 }
 
 type RedisConnectionType string

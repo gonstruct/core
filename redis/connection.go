@@ -16,9 +16,9 @@ import (
 const (
 	DefaultConnection = "default"
 
-	ModeSingle   = "single"
-	ModeSentinel = "sentinel"
-	ModeCluster  = "cluster"
+	ModeSingle   = string(config.SingleRedisMode)
+	ModeSentinel = string(config.SentinelRedisMode)
+	ModeCluster  = string(config.ClusterRedisMode)
 )
 
 type Configuration struct {
@@ -33,9 +33,6 @@ type Configuration struct {
 	TLS              bool
 }
 
-// ErrNoConfig is a Redis connection asked for before Configure.
-var ErrNoConfig = errors.New("[redis] no config: pass app.WithRedis")
-
 // configured is the app's connections, by name.
 var configured atomic.Pointer[config.Redis]
 
@@ -49,7 +46,7 @@ func Configure(redis config.Redis) {
 func Load(connection string) (Configuration, error) {
 	redis := configured.Load()
 	if redis == nil {
-		return Configuration{}, ErrNoConfig
+		return Configuration{}, errors.New("[redis] no config: pass app.WithRedis")
 	}
 	if strings.TrimSpace(connection) == "" {
 		connection = DefaultConnection
@@ -59,9 +56,17 @@ func Load(connection string) (Configuration, error) {
 		return Configuration{}, fmt.Errorf("[redis] no connection %q in the config", connection)
 	}
 
+	mode, addresses := ModeSingle, settings.Addresses
+	if settings.Mode != "" {
+		mode = settings.Mode.String()
+	}
+	if len(addresses) == 0 && settings.Host != "" && settings.Port != "" {
+		addresses = []string{net.JoinHostPort(settings.Host, settings.Port)}
+	}
+
 	configuration := Configuration{
-		Mode:             strings.ToLower(settings.Mode),
-		Addresses:        settings.Addresses,
+		Mode:             mode,
+		Addresses:        addresses,
 		MasterName:       settings.MasterName,
 		Username:         settings.Username,
 		Password:         settings.Password,
@@ -70,13 +75,6 @@ func Load(connection string) (Configuration, error) {
 		Database:         settings.Database,
 		TLS:              settings.TLS,
 	}
-	if configuration.Mode == "" {
-		configuration.Mode = ModeSingle
-	}
-	if len(configuration.Addresses) == 0 && settings.Host != "" && settings.Port != "" {
-		configuration.Addresses = []string{net.JoinHostPort(settings.Host, settings.Port)}
-	}
-
 	if err := configuration.validate(connection); err != nil {
 		return Configuration{}, err
 	}
