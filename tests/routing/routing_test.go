@@ -5,11 +5,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/routing"
 	"github.com/gonstruct/core/routing/response"
 
@@ -27,12 +30,10 @@ func TestRunFinishesTheRequestsInFlightWhenStopped(t *testing.T) {
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOST", "127.0.0.1")
-	t.Setenv("PORT", fmt.Sprint(port))
-	t.Setenv("SHUTDOWN_TIMEOUT", "5s")
 
 	started := make(chan struct{})
-	server := routing.New(routing.WithRouters(func(engine *routing.Engine) {
+	listening := config.Server{Host: "127.0.0.1", Port: port, ShutdownTimeout: 5 * time.Second}
+	server := routing.New(routing.WithConfig(listening), routing.WithRouters(func(engine *routing.Engine) {
 		engine.GET("/slow", func(*gin.Context) response.Response {
 			close(started)
 			time.Sleep(300 * time.Millisecond)
@@ -91,5 +92,27 @@ func TestRunFinishesTheRequestsInFlightWhenStopped(t *testing.T) {
 	}
 	if _, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second); err == nil {
 		t.Fatal("expected the stopped server to take no new connections")
+	}
+}
+
+func TestRunNeedsAConfig(t *testing.T) {
+	if err := routing.New().Run(); err == nil || !strings.Contains(err.Error(), "no config") {
+		t.Fatalf("expected no config, got %v", err)
+	}
+}
+
+func TestTheHealthEndpointIsTheConfigs(t *testing.T) {
+	healthy := routing.New(routing.WithConfig(config.Server{HealthEndpoint: "/health"})).Engine().Handler()
+	recorder := httptest.NewRecorder()
+	healthy.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "healthy") {
+		t.Fatalf("expected healthy, got %d: %s", recorder.Code, recorder.Body)
+	}
+
+	bare := routing.New(routing.WithConfig(config.Server{})).Engine().Handler()
+	recorder = httptest.NewRecorder()
+	bare.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected no health endpoint, got %d", recorder.Code)
 	}
 }

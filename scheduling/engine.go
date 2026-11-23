@@ -3,7 +3,6 @@ package scheduling
 import (
 	"context"
 	"fmt"
-	"os"
 	"slices"
 	"time"
 
@@ -35,6 +34,9 @@ func NewSynchronousEngine() *Engine {
 type Engine struct {
 	gocron.Scheduler
 
+	// Environment is matched against command.Environment(...).
+	Environment string
+
 	synchronous bool
 	Commands    []command.Command
 }
@@ -50,8 +52,8 @@ func (e *Engine) Command(cmd command.Command, options ...command.Option) {
 
 	opts := command.NewOptions(options...)
 
-	if len(opts.Environments) > 0 && !slices.Contains(opts.Environments, os.Getenv("APP_ENV")) {
-		log.Info().Msgf("[scheduling] skipping command %s for environment %s", cmd.Name(), os.Getenv("APP_ENV"))
+	if len(opts.Environments) > 0 && !slices.Contains(opts.Environments, e.Environment) {
+		log.Info().Msgf("[scheduling] skipping command %s for environment %s", cmd.Name(), e.Environment)
 		return
 	}
 

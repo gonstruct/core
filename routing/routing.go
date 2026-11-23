@@ -2,15 +2,16 @@ package routing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/console"
 	"github.com/gonstruct/core/routing/requestid"
 	"github.com/gonstruct/core/routing/response"
@@ -21,11 +22,10 @@ import (
 )
 
 type Routing struct {
-	Routers         []func(*Engine)
-	Middlewares     MiddlewareEngine
-	Recovery        RecoveryHandler
-	HealthEndpoint  string
-	TrustedPlatform string
+	Config      *config.Server
+	Routers     []func(*Engine)
+	Middlewares MiddlewareEngine
+	Recovery    RecoveryHandler
 }
 
 type RecoveryHandler func(context *gin.Context, recovered any) response.Response
@@ -44,8 +44,10 @@ func (r *Routing) Engine() *Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := NewEngine()
+	server := r.server()
 
-	router.TrustedPlatform = r.TrustedPlatform
+	router.TrustedPlatform = server.TrustedPlatform
+	router.Engine.Use(response.ShowErrors(server.ShowErrors))
 	router.ContextWithFallback = true
 	router.RemoteIPHeaders = []string{
 		"CF-Connecting-IP",
@@ -99,9 +101,9 @@ func (r *Routing) Engine() *Engine {
 		return response.NotFound(response.WithMessage("Route not found"))
 	})
 
-	if r.HealthEndpoint != "" {
+	if server.HealthEndpoint != "" {
 		startedAt := time.Now()
-		router.GET(r.HealthEndpoint, func(c *gin.Context) response.Response {
+		router.GET(server.HealthEndpoint, func(c *gin.Context) response.Response {
 			return response.Success(response.WithRaw(map[string]any{
 				"status": "healthy",
 				"uptime": time.Since(startedAt),
@@ -118,26 +120,18 @@ func (r *Routing) Engine() *Engine {
 
 // Run serves until the process is asked to stop, by SIGTERM as a container
 // is or by an interrupt, then takes no new connections and lets the
-// requests already in flight finish, for up to SHUTDOWN_TIMEOUT (30s when
-// unset): a deploy that starts a new container beside this one and then
-// stops it drops nothing.
+// requests already in flight finish, for up to ShutdownTimeout: a deploy
+// that starts a new container beside this one and then stops it drops
+// nothing.
 func (r *Routing) Run() error {
+	if r.Config == nil {
+		return errors.New("[routing] no config: pass routing.WithConfig")
+	}
 	engine := r.Engine()
 
-	host := "0.0.0.0"
-	port := 80
+	settings := r.server()
 
-	if h := os.Getenv("HOST"); h != "" {
-		host = h
-	}
-
-	if p := os.Getenv("PORT"); p != "" {
-		if p, err := strconv.Atoi(p); err == nil {
-			port = p
-		}
-	}
-
-	hostWithPort := net.JoinHostPort(host, fmt.Sprint(port))
+	hostWithPort := net.JoinHostPort(settings.Host, fmt.Sprint(settings.Port))
 	server := &http.Server{
 		Addr:              hostWithPort,
 		Handler:           engine.Handler(),
@@ -159,7 +153,7 @@ func (r *Routing) Run() error {
 	case <-stopping.Done():
 	}
 
-	timeout := shutdownTimeout()
+	timeout := settings.ShutdownTimeout
 	log.Info().Msgf("Stopping: finishing the requests in flight, for up to %s.", timeout)
 	finishing, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -167,12 +161,24 @@ func (r *Routing) Run() error {
 	return server.Shutdown(finishing)
 }
 
-// shutdownTimeout is how long a stopping server waits for its requests in
-// flight: SHUTDOWN_TIMEOUT as a duration, 30s when unset or unreadable.
-func shutdownTimeout() time.Duration {
-	if value, err := time.ParseDuration(os.Getenv("SHUTDOWN_TIMEOUT")); err == nil && value > 0 {
-		return value
+// server returns the config with defaults filled in. Engine works without
+// a config, as tests use it.
+func (r *Routing) server() config.Server {
+	host, port, timeout := "0.0.0.0", 80, 30*time.Second
+	if r.Config == nil {
+		return config.Server{Host: host, Port: port, ShutdownTimeout: timeout}
 	}
 
-	return 30 * time.Second
+	server := *r.Config
+	if server.Host == "" {
+		server.Host = host
+	}
+	if server.Port == 0 {
+		server.Port = port
+	}
+	if server.ShutdownTimeout <= 0 {
+		server.ShutdownTimeout = timeout
+	}
+
+	return server
 }

@@ -4,12 +4,14 @@ import (
 	"embed"
 
 	"github.com/gonstruct/core/cache"
+	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/console"
 	"github.com/gonstruct/core/database/migration"
 	"github.com/gonstruct/core/eventing"
 	"github.com/gonstruct/core/facades/database"
 	"github.com/gonstruct/core/facades/database/seeder"
 	"github.com/gonstruct/core/queueing"
+	redisconnection "github.com/gonstruct/core/redis"
 	"github.com/gonstruct/core/routing"
 	"github.com/gonstruct/core/scheduling"
 )
@@ -54,6 +56,13 @@ func WithSeeders(seeders seeder.Seeders) option {
 	}
 }
 
+// WithRedis registers the Redis connections the queue and cache use.
+func WithRedis(redis config.Redis) option {
+	return func(*App) {
+		redisconnection.Configure(redis)
+	}
+}
+
 func WithCache(options ...cache.Option) option {
 	return func(a *App) {
 		a.cache = cache.New(options...)
@@ -69,14 +78,14 @@ func WithRouting(options ...routing.Option) option {
 
 func WithScheduling(options ...scheduling.Option) option {
 	return func(a *App) {
-		a.scheduling = scheduling.New(options...)
+		a.scheduling = scheduling.New(append([]scheduling.Option{scheduling.WithEnvironment(a.environment.String())}, options...)...)
 		a.console.Register("schedule:work", func(*console.Console, []string) error { return a.scheduling.Run() })
 	}
 }
 
 func WithQueueing(options ...queueing.Option) option {
 	return func(a *App) {
-		a.queueing = queueing.New(options...)
+		a.queueing = queueing.New(append([]queueing.Option{queueing.WithCache(a.Cache)}, options...)...)
 		a.console.Register("queue:work", func(*console.Console, []string) error { return a.queueing.Run() })
 	}
 }

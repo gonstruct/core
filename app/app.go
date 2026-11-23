@@ -12,12 +12,11 @@ import (
 	"github.com/gonstruct/core/eventing"
 	"github.com/gonstruct/core/facades/database"
 	"github.com/gonstruct/core/queueing"
+	"github.com/gonstruct/core/queueing/middleware"
 	"github.com/gonstruct/core/routing"
 	"github.com/gonstruct/core/scheduling"
 
 	"github.com/rs/zerolog/log"
-
-	"github.com/gonstruct/validation/env"
 )
 
 type App struct {
@@ -53,9 +52,9 @@ func Instance() *App {
 
 var instance *App
 
-func New(options ...option) *App {
+func New(configuration config.App, options ...option) *App {
 	application := &App{
-		environment: env.Enum[config.Environment]("APP_ENV"),
+		environment: configuration.Environment,
 		ctx:         context.Background(),
 		createdAt:   time.Now(),
 		console:     console.New(),
@@ -64,6 +63,8 @@ func New(options ...option) *App {
 	for _, option := range options {
 		option(application)
 	}
+
+	middleware.UseCache(application.Cache())
 
 	if err := application.providers.Register(application.ctx); err != nil {
 		log.Fatal().Err(err).Msg("Failed to register providers")
