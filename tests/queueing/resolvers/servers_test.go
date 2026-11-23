@@ -49,34 +49,34 @@ func jobs(list ...job.Job) map[string]job.Job {
 	return byName
 }
 
-func TestPools(t *testing.T) {
+func TestServers(t *testing.T) {
 	cases := []struct {
 		name   string
 		jobs   map[string]job.Job
 		groups map[string]string
 		config config.Queue
-		want   []resolvers.Pool
+		want   []resolvers.Server
 	}{
 		{
 			name:   "jobs outside a group share the default queue's workers",
 			jobs:   jobs(&plain{}),
 			config: config.Queue{Concurrency: 10},
-			want:   []resolvers.Pool{{Name: "default", Concurrency: 10, Queues: map[string]int{"default": 1}}},
+			want:   []resolvers.Server{{Concurrency: 10, Queues: map[string]int{"default": 1}}},
 		},
 		{
 			name:   "jobs outside a group naming queues share them by priority",
 			jobs:   jobs(&plain{}, &queued{name: "mail", queue: "mail", priority: 3}, &queued{name: "track", queue: "tracking"}),
 			config: config.Queue{Concurrency: 10},
-			want:   []resolvers.Pool{{Name: "default", Concurrency: 10, Queues: map[string]int{"default": 1, "mail": 3, "tracking": 1}}},
+			want:   []resolvers.Server{{Concurrency: 10, Queues: map[string]int{"default": 1, "mail": 3, "tracking": 1}}},
 		},
 		{
 			name:   "a group gets workers of its own, on its queue",
 			jobs:   jobs(&queued{name: "launch"}, &queued{name: "destroy"}, &plain{}),
 			groups: map[string]string{"launch": "ci", "destroy": "ci"},
 			config: config.Queue{Concurrency: 100, Groups: map[string]config.QueueGroup{"ci": {Concurrency: 150}}},
-			want: []resolvers.Pool{
-				{Name: "ci", Concurrency: 150, Queues: map[string]int{"ci": 1}},
-				{Name: "default", Concurrency: 100, Queues: map[string]int{"default": 1}},
+			want: []resolvers.Server{
+				{Group: "ci", Concurrency: 150, Queues: map[string]int{"ci": 1}},
+				{Concurrency: 100, Queues: map[string]int{"default": 1}},
 			},
 		},
 		{
@@ -84,13 +84,13 @@ func TestPools(t *testing.T) {
 			jobs:   jobs(&queued{name: "launch"}),
 			groups: map[string]string{"launch": "ci"},
 			config: config.Queue{Groups: map[string]config.QueueGroup{"ci": {Concurrency: 150}}},
-			want:   []resolvers.Pool{{Name: "ci", Concurrency: 150, Queues: map[string]int{"ci": 1}}},
+			want:   []resolvers.Server{{Group: "ci", Concurrency: 150, Queues: map[string]int{"ci": 1}}},
 		},
 	}
 
 	for _, each := range cases {
 		t.Run(each.name, func(t *testing.T) {
-			got, err := resolvers.Pools(each.jobs, each.groups, each.config)
+			got, err := resolvers.Servers(each.jobs, each.groups, each.config)
 			if err != nil || !reflect.DeepEqual(got, each.want) {
 				t.Fatalf("got %+v (%v), want %+v", got, err, each.want)
 			}
@@ -98,7 +98,7 @@ func TestPools(t *testing.T) {
 	}
 }
 
-func TestPoolsRefuse(t *testing.T) {
+func TestServersRefuse(t *testing.T) {
 	cases := []struct {
 		name   string
 		jobs   map[string]job.Job
@@ -126,8 +126,8 @@ func TestPoolsRefuse(t *testing.T) {
 
 	for _, each := range cases {
 		t.Run(each.name, func(t *testing.T) {
-			if pools, err := resolvers.Pools(each.jobs, each.groups, each.config); err == nil {
-				t.Fatalf("expected an error, got %+v", pools)
+			if servers, err := resolvers.Servers(each.jobs, each.groups, each.config); err == nil {
+				t.Fatalf("expected an error, got %+v", servers)
 			}
 		})
 	}
