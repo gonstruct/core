@@ -13,14 +13,14 @@ import (
 	"github.com/gonstruct/core/facades/database"
 	"github.com/gonstruct/core/queueing"
 	"github.com/gonstruct/core/routing"
+	"github.com/gonstruct/core/routing/response"
 	"github.com/gonstruct/core/scheduling"
 
 	"github.com/rs/zerolog/log"
-
-	"github.com/gonstruct/validation/env"
 )
 
 type App struct {
+	config      config.App
 	environment config.Environment
 
 	ctx context.Context
@@ -53,13 +53,19 @@ func Instance() *App {
 
 var instance *App
 
-func New(options ...option) *App {
+// New builds the application from its config, which the rest of it reads:
+// its environment decides which scheduled commands run and whether failed
+// responses say their error.
+func New(configuration config.App, options ...option) *App {
 	application := &App{
-		environment: env.Enum[config.Environment]("APP_ENV"),
+		config:      configuration,
+		environment: configuration.Environment,
 		ctx:         context.Background(),
 		createdAt:   time.Now(),
 		console:     console.New(),
 	}
+
+	response.ShowErrors(configuration.Environment != config.ProductionEnvironment)
 
 	for _, option := range options {
 		option(application)

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gonstruct/core/app"
+	"github.com/gonstruct/core/config"
 )
 
 type service struct{ built int }
@@ -13,9 +14,8 @@ type service struct{ built int }
 // entrypoint does.
 func boot(t *testing.T, bindings ...app.Binding) {
 	t.Helper()
-	t.Setenv("APP_ENV", "testing")
 
-	app.New(app.WithSingletons(app.Singletons(bindings...))).SetInstance()
+	app.New(config.App{Environment: config.TestingEnvironment}, app.WithSingletons(app.Singletons(bindings...))).SetInstance()
 }
 
 func TestSingletonBuildsOnceAndShares(t *testing.T) {

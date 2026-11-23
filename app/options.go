@@ -69,7 +69,7 @@ func WithRouting(options ...routing.Option) option {
 
 func WithScheduling(options ...scheduling.Option) option {
 	return func(a *App) {
-		a.scheduling = scheduling.New(options...)
+		a.scheduling = scheduling.New(append([]scheduling.Option{scheduling.WithEnvironment(a.environment.String())}, options...)...)
 		a.console.Register("schedule:work", func(*console.Console, []string) error { return a.scheduling.Run() })
 	}
 }
