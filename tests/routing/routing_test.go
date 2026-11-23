@@ -1,12 +1,13 @@
 package routing_test
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -95,7 +96,24 @@ func TestRunFinishesTheRequestsInFlightWhenStopped(t *testing.T) {
 }
 
 func TestRunNeedsAConfig(t *testing.T) {
-	if err := routing.New().Run(); !errors.Is(err, routing.ErrNoConfig) {
-		t.Fatalf("expected ErrNoConfig, got %v", err)
+	if err := routing.New().Run(); err == nil || !strings.Contains(err.Error(), "no config") {
+		t.Fatalf("expected no config, got %v", err)
+	}
+}
+
+// The health endpoint is the config's, and there is none without it.
+func TestTheHealthEndpointIsTheConfigs(t *testing.T) {
+	healthy := routing.New(routing.WithConfig(config.Server{HealthEndpoint: "/health"})).Engine().Handler()
+	recorder := httptest.NewRecorder()
+	healthy.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "healthy") {
+		t.Fatalf("expected healthy, got %d: %s", recorder.Code, recorder.Body)
+	}
+
+	bare := routing.New(routing.WithConfig(config.Server{})).Engine().Handler()
+	recorder = httptest.NewRecorder()
+	bare.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected no health endpoint, got %d", recorder.Code)
 	}
 }
