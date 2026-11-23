@@ -178,8 +178,9 @@ func serve(servers []*asynq.Server, handler asynq.Handler) error {
 // retried and failed, the same in every pool.
 func (e *Redis) config(jobs map[string]job.Job, pool Pool) asynq.Config {
 	return asynq.Config{
-		Concurrency: pool.Concurrency,
-		Queues:      pool.Queues,
+		Concurrency:       pool.Concurrency,
+		TaskCheckInterval: pool.CheckInterval,
+		Queues:            pool.Queues,
 		RetryDelayFunc: func(retries int, err error, task *asynq.Task) time.Duration {
 			if release, ok := job.AsRelease(err); ok {
 				return release.Delay

@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/queueing/job"
@@ -85,6 +86,20 @@ func TestPools(t *testing.T) {
 			groups: map[string]string{"launch": "ci"},
 			config: config.Queue{Groups: map[string]config.QueueGroup{"ci": {Concurrency: 150}}},
 			want:   []resolvers.Pool{{Name: "ci", Concurrency: 150, Queues: map[string]int{"ci": 1}}},
+		},
+		{
+			name:   "each pool looks for work as often as its config says",
+			jobs:   jobs(&queued{name: "launch"}, &plain{}),
+			groups: map[string]string{"launch": "ci"},
+			config: config.Queue{
+				Concurrency:   100,
+				CheckInterval: time.Second,
+				Groups:        map[string]config.QueueGroup{"ci": {Concurrency: 150, CheckInterval: 50 * time.Millisecond}},
+			},
+			want: []resolvers.Pool{
+				{Name: "ci", Concurrency: 150, CheckInterval: 50 * time.Millisecond, Queues: map[string]int{"ci": 1}},
+				{Name: "default", Concurrency: 100, CheckInterval: time.Second, Queues: map[string]int{"default": 1}},
+			},
 		},
 	}
 

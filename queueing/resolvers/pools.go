@@ -3,6 +3,7 @@ package resolvers
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/gonstruct/core/config"
 	"github.com/gonstruct/core/queueing/job"
@@ -19,9 +20,10 @@ const DefaultPool = "default"
 // Pool is what one asynq server of the worker runs: Concurrency workers
 // taking from Queues, by weight.
 type Pool struct {
-	Name        string
-	Concurrency int
-	Queues      map[string]int
+	Name          string
+	Concurrency   int
+	CheckInterval time.Duration
+	Queues        map[string]int
 }
 
 // Pools is a pool for each group, on its queue with the workers the config
@@ -45,7 +47,12 @@ func Pools(jobs map[string]job.Job, groups map[string]string, queue config.Queue
 		if workers < 1 {
 			return nil, fmt.Errorf("[queueing] queue group %s has no workers: give it a Concurrency in the config's Groups", group)
 		}
-		pools = append(pools, Pool{Name: group, Concurrency: workers, Queues: map[string]int{group: 1}})
+		pools = append(pools, Pool{
+			Name:          group,
+			Concurrency:   workers,
+			CheckInterval: queue.Groups[group].CheckInterval,
+			Queues:        map[string]int{group: 1},
+		})
 	}
 	for group := range queue.Groups {
 		if !grouped[group] {
@@ -74,7 +81,12 @@ func Pools(jobs map[string]job.Job, groups map[string]string, queue config.Queue
 		if queue.Concurrency < 1 {
 			return nil, fmt.Errorf("[queueing] the default queue has no workers: give the config a Concurrency")
 		}
-		pools = append(pools, Pool{Name: DefaultPool, Concurrency: queue.Concurrency, Queues: sharing})
+		pools = append(pools, Pool{
+			Name:          DefaultPool,
+			Concurrency:   queue.Concurrency,
+			CheckInterval: queue.CheckInterval,
+			Queues:        sharing,
+		})
 	}
 
 	return pools, nil
